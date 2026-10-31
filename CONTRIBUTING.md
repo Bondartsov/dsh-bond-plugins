@@ -70,9 +70,9 @@ feat(dsh-migrate): переименование копии вслед за ис�
 docs(dsh-reload): когда ⟳ не помогает и нужен перезапуск
 ```
 
-Релиз — это тег `vX.Y.Z`: он собирает GitHub Release из корневого `CHANGELOG.md`,
-`plugins.json` и журналов плагинов (`.github/workflows/release.yml`), публикации в npm нет;
-тема PR — Conventional Commits.
+Релиз — это тег `<каталог>-vX.Y.Z` (например `peer-bus-v2.1.0`): он собирает GitHub Release только
+для этого плагина из раздела его `CHANGELOG.md` (`.github/workflows/release.yml`), публикации в npm
+нет; тема PR — Conventional Commits, а `node scripts/check-versions.mjs` должен проходить.
 
 ## Что не стоит присылать
 

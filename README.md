@@ -1,7 +1,6 @@
 # dsh-bond-plugins
 
 [![CI](https://github.com/Bondartsov/dsh-bond-plugins/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Bondartsov/dsh-bond-plugins/actions/workflows/ci.yml)
-[![Последний релиз](https://img.shields.io/github/v/release/Bondartsov/dsh-bond-plugins?sort=semver&display_name=tag)](https://github.com/Bondartsov/dsh-bond-plugins/releases/latest)
 
 Коллекция плагинов для **DeepSeek Harness (DSH)** — десктопного агентского харнесса.
 Все плагины написаны под спецификацию DSH 2.x, не имеют внешних зависимостей и работают
@@ -10,11 +9,29 @@
 Репозиторий — единственный источник правды: обновление плагинов = `git pull` + перезагрузка
 плагинов в DSH. Никаких сборок, никакого npm-реестра, никаких «скачайте zip».
 
+## Версии и релизы
+
+`git pull` приносит снапшот репозитория целиком, но версии и релизы у плагинов **независимые**:
+тег и GitHub Release вида `<каталог>-v<версия>` (например `peer-bus-v2.1.0`) появляются только у того
+плагина, который менялся. Остальные плагины в этом релизе не участвуют и своих версий не меняют.
+Сверку `plugins.json` с `package.json` каждого плагина делает CI (`.github/workflows/ci.yml`),
+создание релиза по тегу — `.github/workflows/release.yml`.
+
+| Плагин | Версия | Журнал изменений |
+|---|---|---|
+| `peer-bus` | 2.1.0 | [peer-bus/CHANGELOG.md](peer-bus/CHANGELOG.md) |
+| `dsh-migrate` | 1.0.0 | [dsh-migrate/CHANGELOG.md](dsh-migrate/CHANGELOG.md) |
+| `dsh-reload` | 1.0.0 | [dsh-reload/CHANGELOG.md](dsh-reload/CHANGELOG.md) |
+| `composer-cost` | 1.0.0 | [composer-cost/CHANGELOG.md](composer-cost/CHANGELOG.md) |
+| `composer-cost-day` | 1.0.0 | [composer-cost-day/CHANGELOG.md](composer-cost-day/CHANGELOG.md) |
+| `dsh-subagent-indicator` | 1.0.0 | [dsh-subagent-indicator/CHANGELOG.md](dsh-subagent-indicator/CHANGELOG.md) |
+| `dsh-agent-import` | 1.0.0 | [dsh-agent-import/CHANGELOG.md](dsh-agent-import/CHANGELOG.md) |
+
 ## Состав
 
 | Плагин | Версия | Что делает | Интерфейс |
 |---|---|---|---|
-| [`peer-bus`](peer-bus/README.md) | 2.0.0 | Доска сессий: кто работает, кто чем занят, мастер проекта; обмен сообщениями между сессиями, вопросы/ответы, захват общих ресурсов, ожидание событий | панель «Доска сессий», инструменты `peer_*` |
+| [`peer-bus`](peer-bus/README.md) | 2.1.0 | Доска сессий: кто работает, кто чем занят, мастер проекта; обмен сообщениями между сессиями, вопросы/ответы, захват общих ресурсов, ожидание событий | панель «Доска сессий», инструменты `peer_*` |
 | [`dsh-migrate`](dsh-migrate/README.md) | 1.0.0 | Импорт сессий из Claude Code, Codex, ZCode, KiloCode, OpenCode в DSH + миграция ассетов: скиллы, MCP-серверы, секреты, инструкции | панель «Миграция» (2 вкладки) |
 | [`dsh-reload`](dsh-reload/README.md) | 1.0.0 | Кнопка **⟳** «Перезагрузить DSH»: перезагрузка плагинов и клиентских бандлов без перезапуска приложения | кнопка в боковой панели, `POST /dsh-reload/reload` |
 | [`composer-cost`](composer-cost/README.md) | 1.0.0 | Оценка стоимости текущего контекста в рублях: ячейка «≈ N ₽» в доке композера, тарифы моделей | ячейка под композером |

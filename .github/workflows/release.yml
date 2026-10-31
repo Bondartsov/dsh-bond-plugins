@@ -1,17 +1,18 @@
 name: release
 
-# Релиз = git-тег вида vX.Y.Z. Публикации в npm нет: репозиторий — единственный источник
-# правды, плагины ставятся через install.ps1 / update.ps1 прямо из этого репозитория.
-# Текст релиза собирается из plugins.json (состав и версии) и CHANGELOG.md каждого плагина.
+# Релиз — отдельный у каждого плагина: тег `<каталог>-v<версия>`, например `peer-bus-v2.1.0`.
+# Монорепозиторий не означает общий релиз: изменился один плагин — тег и GitHub Release
+# появляются только у него, версии остальных не трогаются.
+# Публикации в npm нет: плагины ставятся из этого репозитория через install.ps1 / update.ps1.
 
 on:
   push:
     tags:
-      - 'v*'
+      - '*-v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Тег вида vX.Y.Z (для повторного прогона релиза)'
+        description: 'Тег плагина, например peer-bus-v2.1.0'
         required: true
         type: string
 
@@ -30,8 +31,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Тег релиза
-        id: tag
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      # Каталог берётся из самого тега, версия сверяется с package.json: релиз не должен
+      # расходиться с тем, что реально лежит в этом коммите.
+      - name: Разобрать тег и сверить версию с package.json
+        id: plugin
         shell: bash
         run: |
           set -euo pipefail
@@ -40,108 +47,116 @@ jobs:
           else
             tag="${GITHUB_REF_NAME}"
           fi
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::тег '$tag' не похож на vX.Y.Z — релиз не собирается"
-            exit 1
-          fi
-          # Тег должен существовать: релиз вешается на него, а не создаёт заново.
-          if ! git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "::error::тег '$tag' не найден в репозитории — сначала запушьте его (git push origin $tag)"
-            exit 1
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Релиз $tag"
 
-      - name: Текст релиза из plugins.json и CHANGELOG.md
+          # Формат строго <каталог>-vX.Y.Z; pre-release (`-rc.1`) пока не принимается — тогда
+          # нужно расширить шаблон и передавать gh release create --prerelease.
+          if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9._-]+-v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::тег '$tag' не вида <каталог>-v<X.Y.Z> — релиз не собирается"
+            exit 1
+          fi
+          dir="${tag%-v*}"
+          version="${tag##*-v}"
+
+          if ! git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::тег '$tag' не найден — сначала запушьте его (git push origin $tag)"
+            exit 1
+          fi
+
+          if [ ! -f "$dir/package.json" ]; then
+            echo "::error::в теге указан каталог '$dir', но $dir/package.json в репозитории нет"
+            exit 1
+          fi
+
+          node --input-type=module -e "
+            import { readFile } from 'node:fs/promises';
+            const [dir, version] = process.argv.slice(1);
+            const manifest = JSON.parse(await readFile('plugins.json', 'utf8'));
+            const plugin = (manifest.plugins ?? []).find((row) => row.dir === dir);
+            if (plugin === undefined) {
+              console.error('::error::каталог ' + dir + ' не описан в plugins.json');
+              process.exit(1);
+            }
+            const pkg = JSON.parse(await readFile(dir + '/package.json', 'utf8'));
+            if (pkg.version !== version) {
+              console.error('::error::версия в теге ' + version + ' не совпадает с ' + dir + '/package.json (' + pkg.version + '). Поднимите версию в package.json и plugins.json, затем перенесите тег.');
+              process.exit(1);
+            }
+            if (plugin.version !== version) {
+              console.error('::error::версия в теге ' + version + ' не совпадает с plugins.json (' + plugin.version + ')');
+              process.exit(1);
+            }
+            console.log('Плагин: ' + plugin.name + ' ' + version + ' (' + dir + ')');
+          " "$dir" "$version"
+
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Текст релиза из CHANGELOG.md этого плагина
         shell: bash
         run: |
           set -euo pipefail
           cat > build-notes.mjs <<'NOTES'
           import { readFile, writeFile } from 'node:fs/promises';
 
-          const tag = process.argv[2] ?? '';
+          import { sectionForVersion } from './scripts/changelog-section.mjs';
+
+          const [dir, version, tag] = process.argv.slice(2);
           const manifest = JSON.parse(await readFile('plugins.json', 'utf8'));
-          const plugins = Array.isArray(manifest.plugins) ? manifest.plugins : [];
-          if (plugins.length === 0) {
-            console.error('plugins.json не содержит списка плагинов');
+          const plugin = manifest.plugins.find((row) => row.dir === dir);
+          const text = await readFile(plugin.changelog, 'utf8').catch(() => '');
+          const section = sectionForVersion(text, version);
+          if (section === '') {
+            console.error('::error::в ' + plugin.changelog + ' нет раздела версии ' + version + ' — релизу нечего показать');
             process.exit(1);
           }
 
-          const time = new Intl.DateTimeFormat('ru-RU', {
-            timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-          }).format(new Date());
           const date = new Intl.DateTimeFormat('ru-RU', {
             timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric',
           }).format(new Date());
-
-          /** Первый раздел CHANGELOG.md — он и есть «что вошло в этот релиз». */
-          function latestSection(text) {
-            const lines = text.split(/\r?\n/u);
-            const start = lines.findIndex((line) => /^##\s+/u.test(line));
-            if (start < 0) return '';
-            const out = [lines[start]];
-            for (let index = start + 1; index < lines.length; index += 1) {
-              if (/^##\s+/u.test(lines[index])) break;
-              out.push(lines[index]);
-            }
-            // Заголовки раздела опускаем на уровень: имя плагина уже даёт заголовок выше.
-            return out.map((line) => (/^(#{2,5})\s/u.test(line) ? '#' + line : line)).join('\n').trim();
-          }
+          const time = new Intl.DateTimeFormat('ru-RU', {
+            timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+          }).format(new Date());
 
           const notes = [];
-          notes.push('Релиз **' + tag + '** — ' + plugins.length + ' плагинов DeepSeek Harness.');
+          notes.push('Релиз плагина `' + plugin.name + '` — версия **' + version + '**, тег `' + tag + '`.');
           notes.push('');
-          notes.push('Дата сборки: **' + date + ' ' + time + '** (МСК).');
+          notes.push('Собран ' + date + ' ' + time + ' (МСК) из `' + plugin.changelog + '`.');
           notes.push('');
-          notes.push('| Плагин | Версия | Каталог |');
-          notes.push('|---|---|---|');
-          for (const plugin of plugins) {
-            notes.push('| `' + plugin.name + '` | ' + plugin.version + ' | `' + plugin.dir + '` |');
-          }
+          notes.push('Репозиторий — монорепозиторий с независимыми версиями: этот релиз относится');
+          notes.push('только к `' + dir + '`, версии остальных плагинов не менялись.');
           notes.push('');
-          // Общий журнал репозитория (инфраструктура, установка, CI) — если он есть.
-          const repositoryLog = await readFile('CHANGELOG.md', 'utf8').catch(() => '');
-          const repositorySection = latestSection(repositoryLog);
-          if (repositorySection !== '') {
-            notes.push('## Изменения репозитория');
-            notes.push('');
-            notes.push(repositorySection);
-            notes.push('');
-          }
-          for (const plugin of plugins) {
-            if (!plugin.changelog) continue;
-            const text = await readFile(plugin.changelog, 'utf8').catch(() => '');
-            const section = latestSection(text);
-            if (section === '') continue;
-            notes.push('## ' + plugin.name + ' ' + plugin.version);
-            notes.push('');
-            notes.push(section);
-            notes.push('');
-          }
+          notes.push('Обновление: `git pull`, затем `powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1`');
+          notes.push('и перезагрузка плагинов в DSH ⟳ (или полный перезапуск, если менялась Host-часть).');
+          notes.push('');
           notes.push('---');
           notes.push('');
-          notes.push('Установка и обновление — через `install.ps1` / `update.ps1` из этого репозитория:');
-          notes.push('npm-публикации нет, `git pull` + перезагрузка плагинов в DSH ⟳.');
+          notes.push(section);
 
           await writeFile('release-notes.md', notes.join('\n') + '\n', 'utf8');
-          console.log('release-notes.md: ' + notes.length + ' строк');
+          console.log('release-notes.md готов: ' + notes.length + ' строк');
           NOTES
-          node build-notes.mjs "${{ steps.tag.outputs.tag }}"
+          node build-notes.mjs "${{ steps.plugin.outputs.dir }}" "${{ steps.plugin.outputs.version }}" "${{ steps.plugin.outputs.tag }}"
           rm -f build-notes.mjs
 
-      - name: Создать GitHub Release
+      # --latest=false обязателен: «последний релиз» репозитория ничего не значит, когда
+      # у каждого плагина свой темп. Заголовок — каталог плюс версия, как в имени тега.
+      - name: Создать GitHub Release для плагина
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ steps.plugin.outputs.tag }}
+          DIR: ${{ steps.plugin.outputs.dir }}
+          VERSION: ${{ steps.plugin.outputs.version }}
         run: |
           set -euo pipefail
+          title="$DIR $VERSION"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Релиз $TAG уже есть — обновляю текст"
-            gh release edit "$TAG" --title "$TAG" --notes-file release-notes.md
+            gh release edit "$TAG" --title "$title" --notes-file release-notes.md --latest=false
           else
-            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md --verify-tag
+            gh release create "$TAG" --title "$title" --notes-file release-notes.md --verify-tag --latest=false
           fi
           url=$(gh release view "$TAG" --json url --jq '.url')
           echo "### Релиз: $url" >> "$GITHUB_STEP_SUMMARY"
-          head -40 release-notes.md >> "$GITHUB_STEP_SUMMARY"
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"

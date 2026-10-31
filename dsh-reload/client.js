@@ -37,8 +37,14 @@ window.__ModuleLoader__.load({
 			"update.check": "проверить обновления",
 			"update.checking": "проверяю…",
 			"update.current": "обновлений нет",
-			"update.behindOne": "доступен {count} коммит — запустите update.ps1",
-			"update.behindMany": "доступно {count} коммитов — запустите update.ps1",
+			"update.noneChanged": "обновление: {count} {word} ({list})",
+			"update.noPlugins": "{count} {word} без изменений в каталогах плагинов",
+			"update.pluginWord.one": "плагин",
+			"update.pluginWord.few": "плагина",
+			"update.pluginWord.many": "плагинов",
+			"update.commitWord.one": "коммит",
+			"update.commitWord.few": "коммита",
+			"update.commitWord.many": "коммитов",
 			"update.ahead": "локальных коммитов впереди: {count}",
 			"update.failed": "Не удалось проверить обновления",
 			"update.offline": "удалённую версию узнать не удалось: {error}",
@@ -95,8 +101,14 @@ window.__ModuleLoader__.load({
 			"update.check": "check for updates",
 			"update.checking": "checking…",
 			"update.current": "up to date",
-			"update.behindOne": "{count} commit available — run update.ps1",
-			"update.behindMany": "{count} commits available — run update.ps1",
+			"update.noneChanged": "update: {count} {word} ({list})",
+			"update.noPlugins": "{count} {word}, no plugin directory changed",
+			"update.pluginWord.one": "plugin",
+			"update.pluginWord.few": "plugins",
+			"update.pluginWord.many": "plugins",
+			"update.commitWord.one": "commit",
+			"update.commitWord.few": "commits",
+			"update.commitWord.many": "commits",
 			"update.ahead": "local commits ahead: {count}",
 			"update.failed": "The update check failed",
 			"update.offline": "the remote version is unavailable: {error}",
@@ -288,6 +300,42 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
+		 * Plural form of one noun, picked by the count: 1 плагин / 2 плагина / 5 плагинов.
+		 * @param tr - the page translator.
+		 * @param key - dictionary prefix, e.g. "update.pluginWord".
+		 * @param count - how many.
+		 * @returns the word in the right form.
+		 */
+		function pluralWord(tr, key, count) {
+			const mod10 = count % 10;
+			const mod100 = count % 100;
+			if (mod10 === 1 && mod100 !== 11) return tr(key + ".one");
+			if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return tr(key + ".few");
+			return tr(key + ".many");
+		}
+
+		/**
+		 * "peer-bus 2.1.0 → 2.2.0"; long lists are cut so the row stays one line.
+		 * @param plugins - changedPlugins from the Host.
+		 * @returns one comma-separated string.
+		 */
+		function formatChanged(plugins) {
+			const shown = plugins.slice(0, 3).map((plugin) => plugin.dir + " " + (plugin.from ?? "?") + " → " + (plugin.to ?? "?"));
+			if (plugins.length > 3) shown.push("+" + String(plugins.length - 3));
+			return shown.join(", ");
+		}
+
+		/**
+		 * Installed versions of the changed plugins, e.g. "peer-bus 2.1.0".
+		 * @param plugins - changedPlugins from the Host.
+		 * @returns one short string.
+		 */
+		function formatInstalled(plugins) {
+			const shown = plugins.slice(0, 2).map((plugin) => plugin.dir + " " + (plugin.from ?? "?"));
+			if (plugins.length > 2) shown.push("+" + String(plugins.length - 2));
+			return shown.join(", ");
+		}
+		/**
 		 * One short line for the version row. Nothing is said until the owner asks:
 		 * the line must not claim "up to date" from a stale local ref.
 		 * @param tr - the page translator.
@@ -305,9 +353,27 @@ window.__ModuleLoader__.load({
 				return { tone: "warn", text: tr("update.offline", { error: versions.warning }) };
 			}
 			const behind = Number.isFinite(versions.behind) ? versions.behind : 0;
+			const changed = Array.isArray(versions.changedPlugins) ? versions.changedPlugins : [];
 			const parts = [];
-			if (behind > 0) {
-				parts.push(tr(behind === 1 ? "update.behindOne" : "update.behindMany", { count: behind }));
+			if (behind > 0 && changed.length > 0) {
+				// The answer names the plugin directories the incoming commits touch, and
+				// nothing else: one bumped peer-bus is never reported as "updated everything".
+				parts.push(formatInstalled(changed));
+				parts.push(
+					tr("update.noneChanged", {
+						count: changed.length,
+						word: pluralWord(tr, "update.pluginWord", changed.length),
+						list: formatChanged(changed),
+					}),
+				);
+			} else if (behind > 0) {
+				// Commits arrived, but no plugin directory changed: say exactly that.
+				parts.push(
+					tr("update.noPlugins", {
+						count: behind,
+						word: pluralWord(tr, "update.commitWord", behind),
+					}),
+				);
 			} else {
 				parts.push(tr("update.current"));
 			}
