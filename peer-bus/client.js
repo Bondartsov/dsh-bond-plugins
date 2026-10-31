@@ -75,6 +75,12 @@ window.__ModuleLoader__.load({
     const TAB_ID = '@local/dsh-peer-bus/board';
     const TAB_KIND = 'peerBusBoard';
 
+    /**
+     * localStorage key of the board's "show closed sessions" choice. Inside `dsh.peerBus.*` so a
+     * later cleanup of this plugin's own keys can find it.
+     */
+    const SHOW_CLOSED_KEY = 'dsh.peerBus.showClosed';
+
     /** English wording. */
     const ENGLISH = {
       'mark.master': 'Master session',
@@ -123,6 +129,11 @@ window.__ModuleLoader__.load({
       'legend.done': 'done',
       'legend.error': 'failed',
       'legend.closed': 'closed',
+      'legend.closedHidden': 'closed (hidden)',
+      'dock.showClosed': 'Show closed',
+      'dock.showClosedCount': 'Show closed ({count})',
+      'dock.showClosedHint': 'Show sessions that are already closed. A project master is always shown.',
+      'dock.emptyHidden': 'Every session here is closed and hidden — turn on «Show closed».',
       'footer.master': 'Master: {name}',
       'tab.title': 'Session board',
     };
@@ -175,6 +186,11 @@ window.__ModuleLoader__.load({
       'legend.done': 'готово',
       'legend.error': 'ошибка',
       'legend.closed': 'закрыта',
+      'legend.closedHidden': 'закрыта (скрыта)',
+      'dock.showClosed': 'Показать закрытые',
+      'dock.showClosedCount': 'Показать закрытые ({count})',
+      'dock.showClosedHint': 'Показывать уже закрытые сессии. Мастер проекта показывается всегда.',
+      'dock.emptyHidden': 'Все сессии здесь закрыты и скрыты — включите «Показать закрытые».',
       'footer.master': 'Мастер: {name}',
       'tab.title': 'Доска сессий',
     };
@@ -343,6 +359,13 @@ window.__ModuleLoader__.load({
       'border-radius:var(--dsw-radius-xs);border:.5px solid var(--dsw-alias-border-l3);',
       'background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);',
       'font:inherit}',
+      /* --- "show closed" checkbox in the board header: off by default --- */
+      '.dshPeerBus_toggleRow{display:inline-flex;align-items:center;gap:5px;flex:none;',
+      'color:var(--dsw-alias-label-tertiary);cursor:pointer;user-select:none}',
+      '.dshPeerBus_toggleRow:hover{color:var(--dsw-alias-label-secondary)}',
+      '.dshPeerBus_toggle{flex:none;width:12px;height:12px;margin:0;cursor:pointer;',
+      'accent-color:var(--dsw-alias-brand-primary)}',
+      '.dshPeerBus_toggleLabel{white-space:nowrap}',
 
       /* --- solid pane background: the board is its own panel, never over the transcript --- */
       '.dshPeerBus_pane{background:var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-l1))}',
@@ -350,6 +373,8 @@ window.__ModuleLoader__.load({
       'color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}',
       '.dshPeerBus_legendItem{display:inline-flex;align-items:center;gap:4px}',
       '.dshPeerBus_legendItem .dshPeerBus_dot{align-self:center}',
+      /* A state the current filter hides stays in the palette, muted, so no colour appears unexplained. */
+      '.dshPeerBus_legendItem[data-hidden=true]{opacity:.45}',
 
       /* --- subagents hang under their session: dimmer, tighter, with a connector --- */
       '.dshPeerBus_branch[data-sub=true]{border-left-style:dashed}',
@@ -593,6 +618,21 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The nodes the tree draws.
+     *
+     * A closed session is over: it was filling the board with dead rows, so it is hidden until the
+     * owner asks for it. The one exception is a project's master — its crown must not disappear
+     * from the project it rules — so a closed master is always drawn, filter or no filter.
+     * @param nodes - normalized nodes, already narrowed to one project.
+     * @param showClosed - whether the owner turned the filter off.
+     * @returns the nodes to draw, in board order.
+     */
+    function visibleNodes(nodes, showClosed) {
+      if (showClosed) return nodes;
+      return nodes.filter((node) => stateOfNode(node) !== 'closed' || node.master || node.role === 'master');
+    }
+
+    /**
      * Group nodes into the spawn tree.
      *
      * A node whose `parent` names nobody on this board is a root — the ordinary
@@ -713,6 +753,57 @@ window.__ModuleLoader__.load({
      * `apply` starts it inside an effect) so every surface shares one snapshot.
      */
     const store = createBoardStore((input, init) => window.fetch(input, init));
+
+    /* ------------------------------------------------- "show closed" preference */
+
+    /**
+     * The owner's "show closed sessions" choice, as one value every surface shares.
+     *
+     * Off unless they turn it on: the board used to be filled with dead rows. `value: null` means
+     * "not read yet", so a board can render before storage is touched and the first read wins.
+     */
+    const showClosedPref = { value: null, listeners: new Set() };
+
+    /** Read the persisted flag once; a browser without storage simply means "off". */
+    function readShowClosed() {
+      if (showClosedPref.value !== null) return showClosedPref.value;
+      let stored = null;
+      try {
+        stored = window.localStorage.getItem(SHOW_CLOSED_KEY);
+      } catch {
+        stored = null;
+      }
+      showClosedPref.value = stored === '1' || stored === 'true';
+      return showClosedPref.value;
+    }
+
+    /** @param listener - called when the choice changes. @returns unsubscribe. */
+    function subscribeShowClosed(listener) {
+      showClosedPref.listeners.add(listener);
+      return () => showClosedPref.listeners.delete(listener);
+    }
+
+    /**
+     * Set the choice, persist it and repaint every surface.
+     * Writing storage is best-effort: a refused or full store must not break the checkbox.
+     * @param next - the new value; anything else than true means "hide".
+     */
+    function setShowClosed(next) {
+      const value = next === true;
+      showClosedPref.value = value;
+      try {
+        window.localStorage.setItem(SHOW_CLOSED_KEY, value ? '1' : '0');
+      } catch {
+        /* no storage: the choice lives for this page only */
+      }
+      for (const listener of [...showClosedPref.listeners]) {
+        try {
+          listener();
+        } catch (error) {
+          console.warn('[peer-bus] show-closed listener failed:', error);
+        }
+      }
+    }
 
     /**
      * Client services this bundle reaches at click time, or `null` where the
@@ -992,21 +1083,34 @@ window.__ModuleLoader__.load({
       if (counts.needs_you > 0) parts.push(tr('dock.stateNeedsYou', { count: counts.needs_you }));
       if (counts.done > 0) parts.push(tr('dock.stateDone', { count: counts.done }));
       if (counts.error > 0) parts.push(tr('dock.stateError', { count: counts.error }));
-      if (parts.length === 0) parts.push(tr('dock.stateClosed', { count: counts.closed }));
+      // `closed` is the fallback line only: with live sessions on screen the counts stay about
+      // what is drawn, and the hidden closed sessions are counted by the header checkbox.
+      if (parts.length === 0 && counts.closed > 0) parts.push(tr('dock.stateClosed', { count: counts.closed }));
       return parts.join(' · ');
     }
 
-    /** The colour legend: one dot per state with its word, so the palette is self-explaining. */
-    function StateLegend({ tr }) {
+    /**
+     * The colour legend: one dot per state with its word, so the palette is self-explaining.
+     * A state the filter hides stays in the palette but is muted — the colours on screen must all
+     * be explained, and a colour nobody can see must not look available.
+     * @param props - the translator plus the current "show closed" choice.
+     */
+    function StateLegend({ tr, showClosed }) {
+      const hidden = showClosed !== true;
       return h(
         'div',
         { className: 'dshPeerBus_legend' },
         NODE_STATES.map((state) =>
           h(
             'span',
-            { key: state, className: 'dshPeerBus_legendItem' },
+            {
+              key: state,
+              className: 'dshPeerBus_legendItem',
+              'data-hidden': state === 'closed' && hidden ? 'true' : 'false',
+              title: state === 'closed' && hidden ? tr('legend.closedHidden') : tr('legend.' + state),
+            },
             h('span', { className: 'dshPeerBus_dot', 'data-state': state, 'aria-hidden': true }),
-            tr('legend.' + state),
+            state === 'closed' && hidden ? tr('legend.closedHidden') : tr('legend.' + state),
           ),
         ),
       );
@@ -1021,6 +1125,32 @@ window.__ModuleLoader__.load({
       ]
         .filter((part) => part !== '')
         .join(' · ');
+    }
+
+    /**
+     * The board header's "show closed sessions" checkbox: a plain tick, off by default, remembered
+     * across restarts. The hidden count rides in the label, so the closed sessions stay accounted
+     * for while they are not drawn.
+     * @param props - translator, the current choice, and how many closed nodes it hides.
+     */
+    function ShowClosedToggle({ tr, showClosed, hiddenClosed }) {
+      const count = Number.isFinite(hiddenClosed) && hiddenClosed > 0 ? hiddenClosed : 0;
+      return h(
+        'label',
+        { className: 'dshPeerBus_toggleRow', title: tr('dock.showClosedHint') },
+        h('input', {
+          type: 'checkbox',
+          className: 'dshPeerBus_toggle',
+          checked: showClosed === true,
+          'aria-label': tr('dock.showClosed'),
+          onChange: (event) => setShowClosed(event?.target?.checked === true),
+        }),
+        h(
+          'span',
+          { className: 'dshPeerBus_toggleLabel' },
+          count > 0 ? tr('dock.showClosedCount', { count }) : tr('dock.showClosed'),
+        ),
+      );
     }
 
     /** The dock's own refresh control. */
@@ -1111,6 +1241,7 @@ window.__ModuleLoader__.load({
     function PeerBoardTab(props) {
       const tr = makeTranslator(props?.t);
       const snapshot = React.useSyncExternalStore(store.subscribe, store.getSnapshot);
+      const showClosed = React.useSyncExternalStore(subscribeShowClosed, readShowClosed);
       const board = snapshot.board;
       const [picked, setPicked] = React.useState('');
 
@@ -1119,7 +1250,11 @@ window.__ModuleLoader__.load({
         if (node.project !== '' && !roots.includes(node.project)) roots.push(node.project);
       }
       const chosen = roots.includes(picked) ? picked : '';
-      const shown = chosen === '' ? board.nodes : board.nodes.filter((node) => node.project === chosen);
+      const inProject = chosen === '' ? board.nodes : board.nodes.filter((node) => node.project === chosen);
+      // The filter narrows first, then the closed sessions are dropped: the project list itself
+      // stays whole, so choosing a project never reshuffles the dropdown.
+      const shown = visibleNodes(inProject, showClosed);
+      const hiddenClosed = inProject.length - shown.length;
       const forest = buildForest(shown);
       const meta = boardMeta(board, shown, tr);
 
@@ -1131,9 +1266,10 @@ window.__ModuleLoader__.load({
           { className: 'dshPeerBus_paneHead' },
           h('span', { className: 'dshPeerBus_paneTitle' }, tr('tab.title')),
           h('span', { className: 'dshPeerBus_paneMeta', title: meta }, meta),
+          h(ShowClosedToggle, { tr, showClosed, hiddenClosed }),
           h(RefreshButton, { tr }),
         ),
-        h(StateLegend, { tr }),
+        h(StateLegend, { tr, showClosed }),
         roots.length > 1
           ? h(
               'label',
@@ -1155,7 +1291,15 @@ window.__ModuleLoader__.load({
           : null,
         h(ClaimsBlock, { claims: board.claims, tr }),
         forest.length === 0
-          ? h('div', { className: 'dshPeerBus_empty' }, snapshot.failed ? tr('dock.emptyHint') : tr('dock.empty'))
+          ? h(
+              'div',
+              { className: 'dshPeerBus_empty' },
+              hiddenClosed > 0
+                ? tr('dock.emptyHidden')
+                : snapshot.failed
+                  ? tr('dock.emptyHint')
+                  : tr('dock.empty'),
+            )
           : h(
               'ul',
               { className: 'dshPeerBus_tree', 'data-grow': 'true' },

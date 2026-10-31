@@ -152,6 +152,27 @@ function sanitize(value, limit = SNIPPET) {
   return clip(String(value ?? '').replace(CONTROL_CHARS, ' '), limit)
 }
 
+/**
+ * A boolean tool argument as it actually arrives.
+ *
+ * The Harness hands JSON through untouched, and a model can write `"true"` (a string) or `1`
+ * instead of `true`. Comparing with `=== true` then silently takes the opposite branch: on
+ * 31.10.2026 the live call `peer_archive_session({ session: "5a4338", restore: "true" })` archived
+ * the session it was asked to restore, and the returned text said so. `true`, the strings
+ * `'true'`/`'1'` (any case, padded) and the number `1` all mean "yes"; anything else means "no".
+ * @param {unknown} value - the raw argument.
+ * @returns {boolean} whether the caller asked for it.
+ */
+function flagArg(value) {
+  if (value === true) return true
+  if (typeof value === 'number') return value === 1
+  if (typeof value === 'string') {
+    const text = value.trim().toLowerCase()
+    return text === 'true' || text === '1'
+  }
+  return false
+}
+
 /** Normalize a workspace path for comparison. */
 function normalizePath(value) {
   if (typeof value !== 'string') return ''
@@ -3075,7 +3096,7 @@ export function apply(ctx) {
       if (target === undefined) fail('PEER_NOT_FOUND', `unknown peer "${reference}"; call peer_sessions first.`)
       if (target.id === agent.id) fail('NOT_OWNER', 'a session cannot archive or restore itself; ask a peer to do it.')
 
-      const restore = args?.restore === true
+      const restore = flagArg(args?.restore)
       try {
         if (restore) {
           await controller.unarchiveSession({ sessionId: target.id })
@@ -3083,7 +3104,7 @@ export function apply(ctx) {
         } else {
           await controller.archiveSession({
             sessionId: target.id,
-            ...(args?.stop_activity === true ? { stopActivity: true } : {}),
+            ...(flagArg(args?.stop_activity) ? { stopActivity: true } : {}),
           })
           target.archived = true
           titles.delete(target.id)
@@ -3109,7 +3130,7 @@ export function apply(ctx) {
     },
     presentCall: (args) => ({
       card: 'generic',
-      title: `${args?.restore === true ? 'Restore' : 'Archive'} peer ${clip(args?.session, 24)}`,
+      title: `${flagArg(args?.restore) ? 'Restore' : 'Archive'} peer ${clip(args?.session, 24)}`,
       kind: 'other',
       rawInput: args,
     }),

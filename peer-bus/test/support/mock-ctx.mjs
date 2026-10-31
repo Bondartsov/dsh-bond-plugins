@@ -220,18 +220,22 @@ export function createHarness(options = {}) {
   }
 
   // Point persistence at the isolated profile before `apply()` reads or writes the state file.
-  const previousProfile = process.env.DSH_PROFILE_DIR
-  process.env.DSH_PROFILE_DIR = profileDir
-  try {
-    apply(ctx)
-  } finally {
-    restoreProfile(previousProfile)
-  }
+  pinProfile()
+  apply(ctx)
 
-  /** Put the state-file environment variable back exactly as it was. */
-  function restoreProfile(value) {
-    if (value === undefined) delete process.env.DSH_PROFILE_DIR
-    else process.env.DSH_PROFILE_DIR = value
+  /**
+   * Point persistence at this harness before letting the plugin act.
+   *
+   * The env var is deliberately NOT restored afterwards. The plugin resolves its state file inside
+   * every `saveState()`, and a Host event (`agent/created`, `agent/disposed`, a heartbeat) fires
+   * outside any tool call, so restoring the caller's profile between calls let a test write harness
+   * state into the real `~/.dsh/profiles/<profile>/.peer-bus-state.json`. That happened on
+   * 31.10.2026: a `node --test` run started from a DSH session inherits `DSH_PROFILE_DIR`, and the
+   * live board then showed mock sessions. Each harness therefore pins its own temporary directory,
+   * and every entry point that can reach `saveState()` pins again.
+   */
+  function pinProfile() {
+    process.env.DSH_PROFILE_DIR = profileDir
   }
 
   // Every tool result is checked the way the Harness checks it: lossless JSON, at any depth.
@@ -239,24 +243,21 @@ export function createHarness(options = {}) {
     const execute = definition.execute
     if (typeof execute !== 'function') continue
     definition.execute = async (...callArgs) => {
-      const previous = process.env.DSH_PROFILE_DIR
-      process.env.DSH_PROFILE_DIR = profileDir
-      try {
-        const result = await execute(...callArgs)
-        return assertLosslessJson(result, `tool ${definition.name}`)
-      } finally {
-        restoreProfile(previous)
-      }
+      pinProfile()
+      const result = await execute(...callArgs)
+      return assertLosslessJson(result, `tool ${definition.name}`)
     }
   }
 
   /** Fire one Host event the way Cordis would. */
   const emit = (event, ...payload) => {
+    pinProfile()
     for (const handler of listeners.get(event) ?? []) handler(...payload)
   }
 
   /** Register a live agent and announce it like the Host does on `agent/created`. */
   function addAgent(id, cwd, extra = {}) {
+    pinProfile()
     const agent = makeAgent(id, cwd, extra)
     liveAgents.set(id, agent)
     emit('agent/created', { agent })
@@ -265,6 +266,7 @@ export function createHarness(options = {}) {
 
   /** Mark an agent disposed: it leaves `agents.get()` and the plugin sees `agent/disposed`. */
   function disposeAgent(agentOrId) {
+    pinProfile()
     const agent = typeof agentOrId === 'string' ? liveAgents.get(agentOrId) : agentOrId
     if (agent === undefined) return undefined
     emit('agent/disposed', { agent })
@@ -346,6 +348,7 @@ export function createHarness(options = {}) {
    * @returns {Promise<{status: number, headers: Record<string, string>, body: string, json: () => any}>} the response.
    */
   async function request(url, requestOptions = {}) {
+    pinProfile()
     const route = routeFor(url)
     const method = requestOptions.method ?? 'GET'
     const payload =
@@ -477,8 +480,11 @@ export function createHarness(options = {}) {
     request,
     /** Let pending `void loadState()` / `void saveState()` microtasks and timers settle. */
     async settle(ms = 20) {
+      pinProfile()
       await new Promise((resolve) => setTimeout(resolve, ms))
     },
+    /** Point persistence at this harness; called by every entry point that can reach `saveState`. */
+    pinProfile,
     toolNames() {
       return [...tools.keys()]
     },

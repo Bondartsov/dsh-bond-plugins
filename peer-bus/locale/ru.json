@@ -48,6 +48,10 @@
     "stateDone": "{count} готово",
     "stateError": "{count} с ошибкой",
     "stateClosed": "{count} закрыто",
+    "showClosed": "Показать закрытые",
+    "showClosedCount": "Показать закрытые ({count})",
+    "showClosedHint": "Показывать уже закрытые сессии. Мастер проекта показывается всегда.",
+    "emptyHidden": "Все сессии здесь закрыты и скрыты — включите «Показать закрытые».",
     "agoNow": "только что",
     "agoMinutes": "{count} мин назад",
     "agoHours": "{count} ч назад",
@@ -59,7 +63,8 @@
     "needs_you": "ждёт вас",
     "done": "готово",
     "error": "ошибка",
-    "closed": "закрыта"
+    "closed": "закрыта",
+    "closedHidden": "закрыта (скрыта)"
   },
   "tab": {
     "title": "Доска сессий"

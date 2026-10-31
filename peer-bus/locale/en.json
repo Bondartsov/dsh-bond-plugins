@@ -48,6 +48,10 @@
     "stateDone": "{count} done",
     "stateError": "{count} failed",
     "stateClosed": "{count} closed",
+    "showClosed": "Show closed",
+    "showClosedCount": "Show closed ({count})",
+    "showClosedHint": "Show sessions that are already closed. A project master is always shown.",
+    "emptyHidden": "Every session here is closed and hidden — turn on «Show closed».",
     "agoNow": "just now",
     "agoMinutes": "{count} min ago",
     "agoHours": "{count} h ago",
@@ -59,7 +63,8 @@
     "needs_you": "asks you",
     "done": "done",
     "error": "failed",
-    "closed": "closed"
+    "closed": "closed",
+    "closedHidden": "closed (hidden)"
   },
   "tab": {
     "title": "Session board"

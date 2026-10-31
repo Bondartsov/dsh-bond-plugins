@@ -41,6 +41,59 @@ test('stop_activity is passed through when asked for', async () => {
   assert.equal(controller.calls.archive[0].stopActivity, true)
 })
 
+test('stop_activity as the string "true" still stops the running work first', async () => {
+  const { harness, a, b, controller } = workspace()
+  await harness.callTool('peer_archive_session', { session: short(b.id), stop_activity: 'true' }, a)
+  assert.equal(controller.calls.archive[0].stopActivity, true, 'a string flag is not silently dropped')
+})
+
+/**
+ * The live incident, 31.10.2026: `peer_archive_session({ session: "5a4338", restore: "true" })`
+ * archived the session it was asked to restore. The recorded tool call carried a *string*, so
+ * `args.restore === true` was false. Guard: a flag is accepted in every shape a model writes it.
+ */
+test('restore given as the string "true" restores instead of archiving', async () => {
+  const { harness, a, b, controller } = workspace()
+  const archived = await harness.callTool('peer_archive_session', { session: short(b.id) }, a)
+  assert.equal(archived.archived, true)
+  assert.match(archived.text, /^Archived /, 'the archive text matches the action')
+
+  const restored = await harness.callTool('peer_archive_session', { session: short(b.id), restore: 'true' }, a)
+  assert.equal(restored.archived, false, 'a string "true" restores')
+  assert.equal(controller.calls.unarchive.length, 1, 'unarchiveSession is called')
+  assert.equal(controller.calls.archive.length, 1, 'no second archive call')
+  assert.match(restored.text, /^Restored /, 'the restored text matches the action')
+  assert.equal(/Archived/.test(restored.text), false, 'the text does not claim an archive')
+  assert.ok(harness.boardFor(a).includes(short(b.id)), 'the restored peer is back on the board')
+})
+
+test('restore given as the number 1 restores too', async () => {
+  const { harness, a, b, controller } = workspace()
+  await harness.callTool('peer_archive_session', { session: short(b.id) }, a)
+  const restored = await harness.callTool('peer_archive_session', { session: short(b.id), restore: 1 }, a)
+  assert.equal(restored.archived, false, 'a numeric 1 restores')
+  assert.equal(controller.calls.unarchive.length, 1)
+})
+
+test('a falsy restore still archives: "false", "0" and 0 are not "yes"', async () => {
+  for (const value of ['false', '0', 0, false]) {
+    const { harness, a, b, controller } = workspace()
+    const result = await harness.callTool('peer_archive_session', { session: short(b.id), restore: value }, a)
+    assert.equal(result.archived, true, `restore ${JSON.stringify(value)} archives`)
+    assert.equal(controller.calls.unarchive.length, 0, `restore ${JSON.stringify(value)} never restores`)
+    assert.match(result.text, /^Archived /, `restore ${JSON.stringify(value)} reports an archive`)
+  }
+})
+
+test('the call card names the action the tool will take, whatever shape the flag came in', () => {
+  const { harness } = workspace()
+  const definition = harness.requireTool('peer_archive_session')
+  assert.match(definition.presentCall({ session: 'x', restore: 'true' }).title, /^Restore /)
+  assert.match(definition.presentCall({ session: 'x', restore: 1 }).title, /^Restore /)
+  assert.match(definition.presentCall({ session: 'x' }).title, /^Archive /)
+  assert.match(definition.presentCall({ session: 'x', restore: 'false' }).title, /^Archive /)
+})
+
 test('a refused archive explains the reason and the way out', async () => {
   const { harness, a, b } = workspace({ archiveError: new Error('session is running') })
   const error = await harness.expectError(
