@@ -135,7 +135,9 @@ if ($PSCmdlet.ShouldProcess($profileJsonPath, 'записать package.json п�
     if ($null -ne $profileJson.dsh.profile.PSObject.Properties['agentPresets']) {
         $out.dsh.profile.agentPresets = $profileJson.dsh.profile.agentPresets
     }
-    ($out | ConvertTo-Json -Depth 10) | Set-Content -LiteralPath $profileJsonPath -Encoding UTF8
+    # UTF-8 WITHOUT BOM: the DSH host parses package.json with plain JSON.parse and dies on a BOM;
+    # Windows PowerShell 5.1 Set-Content -Encoding UTF8 writes one, [IO.File]::WriteAllText does not.
+    [System.IO.File]::WriteAllText($profileJsonPath, ($out | ConvertTo-Json -Depth 10))
     Write-Step "package.json профиля обновлён (изменений: $changed)"
 }
 
