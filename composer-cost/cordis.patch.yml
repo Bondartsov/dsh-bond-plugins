@@ -1,0 +1,4 @@
+# Bundle layer: one Host row whose Client half draws the spend cell.
+- insert:
+    - id: composer-cost
+      name: '@local/composer-cost'

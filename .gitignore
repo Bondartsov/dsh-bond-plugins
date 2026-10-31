@@ -1,0 +1,26 @@
+# Зависимости и артефакты, которые не должны попадать в репозиторий
+node_modules/
+.pnpm-store/
+*.log
+
+# Служебные каталоги рабочей машины автора (в репозиторий не входят)
+profile-backups/
+core-overrides/
+plugin-manager-target-bug/
+dsh-assets-import/
+
+# Резервные копии, пробы и временные файлы
+*.bak-*
+*.bak
+probe*.txt
+_probe*.txt
+tmp-*
+*.tmp
+.backups/
+
+# Редакторы и ОС
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Reload DSH",
+    "description": "A \"Reload DSH\" panel in the left sidebar list: reload changed plugins without closing the application, or bring up a fresh DSH process. The current process pid and start time sit under the cards."
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: agent-import
+      name: "@local/dsh-agent-import"

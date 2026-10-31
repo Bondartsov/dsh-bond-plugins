@@ -1,0 +1,3 @@
+- insert:
+    - id: composer-cost-day
+      name: '@local/composer-cost-day'

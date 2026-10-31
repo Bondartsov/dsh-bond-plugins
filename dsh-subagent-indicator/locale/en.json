@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Subagent indicator",
+    "description": "Highlights the session-header subagent counter with the business accent and a soft pulse while subagents are running."
+  }
+}

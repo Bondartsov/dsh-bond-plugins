@@ -1,0 +1,43 @@
+{
+  "name": "@local/dsh-migrate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One migration plugin with two tabs: import sessions from Claude Code, Codex, ZCode (CLI and v2), KiloCode and OpenCode as native DSH sessions, and move their skills, MCP servers, secrets and instruction documents into DSH — idempotently, with ledgers under ~/.dsh/dsh-migrate",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "lib/**/*.js",
+    "lib/**/*.mjs",
+    "lib/**/*.ps1",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "scripts/**/*.ps1"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}

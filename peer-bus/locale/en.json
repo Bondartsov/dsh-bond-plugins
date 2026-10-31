@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "title": "Peer Bus",
+    "description": "Shows each agent the other live sessions of the same workspace and adds peer_send, peer_inbox, peer_intent, peer_wait and peer_sessions, so separate sessions can agree on who merges or pushes first instead of colliding."
+  },
+  "mark": {
+    "master": "Master session",
+    "masterRunning": "Master session — open the board"
+  },
+  "hover": {
+    "master": "Master session of this workspace"
+  },
+  "menu": {
+    "makeMaster": "Make master",
+    "releaseMaster": "Release master"
+  },
+  "notice": {
+    "masterSet": "Master role assigned",
+    "masterCleared": "Master role released",
+    "masterFailed": "Could not change the master role"
+  },
+  "dock": {
+    "title": "Peer sessions",
+    "counts": "{running} running · {idle} idle · {closed} closed",
+    "updated": "updated {time}",
+    "refresh": "Refresh",
+    "collapse": "Collapse the peer tree",
+    "expand": "Expand the peer tree",
+    "empty": "No peer sessions yet",
+    "emptyHint": "Peers of this project appear here as soon as another session runs.",
+    "master": "master",
+    "sub": "subagent",
+    "worker": "worker",
+    "dnd": "do not disturb",
+    "claims": "Claimed resources",
+    "claimUntil": "until {time}",
+    "openThreads": "threads: {count}",
+    "cost": "Cost: {value}",
+    "openSession": "Open session {name}",
+    "openBoard": "Session board",
+    "filter": "Project",
+    "filterAll": "All projects",
+    "subagentOf": "subagent of «{name}»",
+    "asks": "asks: {count}",
+    "stateRunning": "{count} working",
+    "stateIdle": "{count} idle",
+    "stateNeedsYou": "{count} asking you",
+    "stateDone": "{count} done",
+    "stateError": "{count} failed",
+    "stateClosed": "{count} closed",
+    "agoNow": "just now",
+    "agoMinutes": "{count} min ago",
+    "agoHours": "{count} h ago",
+    "agoDays": "{count} d ago"
+  },
+  "legend": {
+    "running": "working",
+    "idle": "idle",
+    "needs_you": "asks you",
+    "done": "done",
+    "error": "failed",
+    "closed": "closed"
+  },
+  "tab": {
+    "title": "Session board"
+  },
+  "footer": {
+    "master": "Master: {name}"
+  }
+}

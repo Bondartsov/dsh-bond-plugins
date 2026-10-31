@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Composer Cost Meter",
+    "description": "Adds an estimated session spend in rubles to the statistics strip under the message composer."
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@local/dsh-agent-import",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Discover sessions, projects, skills, plugins, MCP servers and configs of Claude Code, Codex, ZCode, KiloCode and OpenCode, and import those sessions into DSH as native, continuable sessions",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "lib/**/*.js",
+    "lib/**/*.mjs",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# Peer Bus: cross-session messaging for agents that share one workspace.
+# Registers five tools and one dynamic runtime-context block on the Host.
+- insert:
+    - id: peer-bus
+      name: '@local/dsh-peer-bus'

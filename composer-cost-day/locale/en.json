@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Daily Spend Ledger",
+    "description": "Accumulates every model call's tokens per day and per route, and serves the daily spend to the composer cost cells."
+  }
+}

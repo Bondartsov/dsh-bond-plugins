@@ -1,0 +1,70 @@
+name: tests
+
+# Плагины проверяются тестами на каждом push и pull request.
+# Windows выбран специально: плагины работают с путями Windows, профилем DSH и PowerShell.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - peer-bus
+          - dsh-migrate
+          - dsh-agent-import
+          - dsh-reload
+          - dsh-subagent-indicator
+          - composer-cost
+          - composer-cost-day
+
+    name: ${{ matrix.plugin }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Тесты ${{ matrix.plugin }}
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD '${{ matrix.plugin }}'
+          if (-not (Test-Path $root)) { Write-Error "нет каталога $root"; exit 1 }
+
+          # У индикатора субагентов свой раннер, у остальных — node --test.
+          if (Test-Path (Join-Path $root 'test/run-tests.mjs')) {
+            Push-Location $root
+            node test/run-tests.mjs
+            $code = $LASTEXITCODE
+            Pop-Location
+          } elseif (Test-Path (Join-Path $root 'test')) {
+            Push-Location $root
+            node --test "test/*.test.mjs"
+            $code = $LASTEXITCODE
+            Pop-Location
+          } else {
+            Write-Host "тестов нет — пропуск"
+            $code = 0
+          }
+
+          if ($code -ne 0) { Write-Error "тесты упали с кодом $code"; exit $code }
+
+      - name: Синтаксис JS в пакете
+        shell: pwsh
+        run: |
+          Push-Location '${{ matrix.plugin }}'
+          foreach ($file in @('index.js', 'client.js')) {
+            if (Test-Path $file) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) { Pop-Location; Write-Error "синтаксис $file"; exit 1 }
+            }
+          }
+          Pop-Location

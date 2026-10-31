@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "title": "Peer Bus",
+    "description": "Показывает агенту другие открытые сессии того же проекта и добавляет peer_send, peer_inbox, peer_intent, peer_wait и peer_sessions — сессии договариваются, кто и когда мержит или пушит, вместо конфликтов."
+  },
+  "mark": {
+    "master": "Сессия-мастер",
+    "masterRunning": "Сессия-мастер — открыть доску"
+  },
+  "hover": {
+    "master": "Сессия-мастер этого проекта"
+  },
+  "menu": {
+    "makeMaster": "Сделать мастером",
+    "releaseMaster": "Снять мастера"
+  },
+  "notice": {
+    "masterSet": "Роль мастера назначена",
+    "masterCleared": "Роль мастера снята",
+    "masterFailed": "Не удалось изменить роль мастера"
+  },
+  "dock": {
+    "title": "Сессии проекта",
+    "counts": "{running} работает · {idle} ждёт · {closed} закрыто",
+    "updated": "обновлено {time}",
+    "refresh": "Обновить",
+    "collapse": "Свернуть дерево сессий",
+    "expand": "Развернуть дерево сессий",
+    "empty": "Пока нет других сессий",
+    "emptyHint": "Сессии этого проекта появятся здесь, как только запустятся.",
+    "master": "мастер",
+    "sub": "субагент",
+    "worker": "воркер",
+    "dnd": "не беспокоить",
+    "claims": "Захваченные ресурсы",
+    "claimUntil": "до {time}",
+    "openThreads": "тредов: {count}",
+    "cost": "Стоимость: {value}",
+    "openSession": "Открыть сессию {name}",
+    "openBoard": "Доска сессий",
+    "filter": "Проект",
+    "filterAll": "Все проекты",
+    "subagentOf": "субагент сессии «{name}»",
+    "asks": "вопросов: {count}",
+    "stateRunning": "{count} работает",
+    "stateIdle": "{count} ждёт",
+    "stateNeedsYou": "{count} спрашивает",
+    "stateDone": "{count} готово",
+    "stateError": "{count} с ошибкой",
+    "stateClosed": "{count} закрыто",
+    "agoNow": "только что",
+    "agoMinutes": "{count} мин назад",
+    "agoHours": "{count} ч назад",
+    "agoDays": "{count} дн назад"
+  },
+  "legend": {
+    "running": "работает",
+    "idle": "простой",
+    "needs_you": "ждёт вас",
+    "done": "готово",
+    "error": "ошибка",
+    "closed": "закрыта"
+  },
+  "tab": {
+    "title": "Доска сессий"
+  },
+  "footer": {
+    "master": "Мастер: {name}"
+  }
+}

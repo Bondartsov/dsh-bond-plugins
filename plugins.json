@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "owner": "Andrey Bondartsov",
+  "license": "MIT",
+  "updatedAt": "31.10.2026 19:57:22",
+  "plugins": [
+    {
+      "name": "@local/dsh-peer-bus",
+      "version": "2.1.0",
+      "dir": "peer-bus",
+      "purpose": "Доска сессий и обмен сообщениями между сессиями: мастер-проекта, вопросы/ответы, захват ресурсов, ожидание.",
+      "host": true,
+      "client": true,
+      "readme": "peer-bus/README.md",
+      "design": "peer-bus/docs/DESIGN.md",
+      "changelog": "peer-bus/CHANGELOG.md"
+    },
+    {
+      "name": "@local/dsh-migrate",
+      "version": "1.0.0",
+      "dir": "dsh-migrate",
+      "purpose": "Импорт сессий из Claude Code, Codex, ZCode, KiloCode, OpenCode и миграция ассетов (скиллы, MCP, секреты, инструкции).",
+      "host": true,
+      "client": true,
+      "readme": "dsh-migrate/README.md",
+      "design": "dsh-migrate/docs/DESIGN.md",
+      "changelog": "dsh-migrate/CHANGELOG.md"
+    },
+    {
+      "name": "@local/dsh-reload",
+      "version": "1.0.0",
+      "dir": "dsh-reload",
+      "purpose": "Кнопка ⟳ «Перезагрузить DSH»: перезагрузка плагинов и клиентских бандлов без перезапуска приложения.",
+      "host": true,
+      "client": true,
+      "readme": "dsh-reload/README.md",
+      "design": "dsh-reload/docs/DESIGN.md",
+      "changelog": "dsh-reload/CHANGELOG.md"
+    },
+    {
+      "name": "@local/composer-cost",
+      "version": "1.0.0",
+      "dir": "composer-cost",
+      "purpose": "Оценка стоимости текущего контекста в рублях: ячейка «≈ N ₽» в доке композера и тарифы моделей.",
+      "host": true,
+      "client": true,
+      "readme": "composer-cost/README.md",
+      "design": "composer-cost/docs/DESIGN.md",
+      "changelog": "composer-cost/CHANGELOG.md"
+    },
+    {
+      "name": "@local/composer-cost-day",
+      "version": "1.0.0",
+      "dir": "composer-cost-day",
+      "purpose": "Счётчик расхода за день по всем сессиям; Host-часть без интерфейса.",
+      "host": true,
+      "client": false,
+      "readme": "composer-cost-day/README.md",
+      "design": "composer-cost-day/docs/DESIGN.md",
+      "changelog": "composer-cost-day/CHANGELOG.md"
+    },
+    {
+      "name": "@local/dsh-subagent-indicator",
+      "version": "1.0.0",
+      "dir": "dsh-subagent-indicator",
+      "purpose": "Подсветка и пульсация чипа «N subagents» в шапке сессии, когда субагенты работают.",
+      "host": true,
+      "client": true,
+      "readme": "dsh-subagent-indicator/README.md",
+      "design": "dsh-subagent-indicator/docs/DESIGN.md",
+      "changelog": "dsh-subagent-indicator/CHANGELOG.md"
+    },
+    {
+      "name": "@local/dsh-agent-import",
+      "version": "1.0.0",
+      "dir": "dsh-agent-import",
+      "purpose": "Движок импорта сессий из других агентов: HTTP-маршруты /agent-import/* и инструмент agent_import.",
+      "host": true,
+      "client": true,
+      "readme": "dsh-agent-import/README.md",
+      "design": "dsh-agent-import/docs/DESIGN.md",
+      "changelog": "dsh-agent-import/CHANGELOG.md"
+    }
+  ]
+}

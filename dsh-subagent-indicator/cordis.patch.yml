@@ -1,0 +1,5 @@
+# Bundle layer: one Host row whose Client half restyles the session-header
+# subagent counter (colour + pulse). Host side has no behaviour of its own.
+- insert:
+    - id: subagent-indicator
+      name: '@local/dsh-subagent-indicator'

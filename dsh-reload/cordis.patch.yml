@@ -1,0 +1,5 @@
+# Bundle layer: one Host row that registers the reload route and draws the
+# sidebar-footer button with its Client half.
+- insert:
+    - id: dsh-reload
+      name: '@local/dsh-reload'
