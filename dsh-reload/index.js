@@ -20,6 +20,11 @@
  * 3. `GET /dsh-reload/status` — read-only facts about this Host process (pid,
  *    parent pid, executable, Electron version), which is how "the pid changed"
  *    is checked from outside.
+ * 4. `GET /dsh-reload/updates` — is the plugins checkout behind its remote
+ *    branch? `git fetch` plus a commit comparison, reported as
+ *    `{installed, remote, behind, branch, changedPlugins}`. It answers and
+ *    changes nothing: updating a plugin means running new code, so it stays a
+ *    deliberate act.
  *
  * The Client half (`client.js`) calls these routes from the sidebar's More menu
  * and reloads the page afterwards.
@@ -39,10 +44,12 @@
 
 import { createRequire } from 'node:module'
 import { spawn as spawnChild } from 'node:child_process'
-import { execFileSync } from 'node:child_process'
-import { writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
+import { promisify } from 'node:util'
+import { writeFileSync, mkdirSync, appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join, resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const name = 'dsh-reload'
 
@@ -65,6 +72,26 @@ const RESTART_ROUTE = '/dsh-reload/restart'
 
 /** Read-only diagnostics route (GET): which process this Host runs in. */
 const STATUS_ROUTE = '/dsh-reload/status'
+
+/**
+ * Read-only route (GET): is the plugins checkout behind its remote branch, and
+ * which plugin directories do the incoming commits touch?
+ * Answers `{ installed, remote, behind, branch, changedPlugins }` and never
+ * changes anything.
+ */
+const UPDATES_ROUTE = '/dsh-reload/updates'
+
+/** Environment variable that points the check at a checkout elsewhere. */
+const REPO_ENV = 'DSH_BOND_PLUGINS'
+
+/** Branch compared when the checkout's own branch cannot be read. */
+const DEFAULT_BRANCH = 'main'
+
+/** Budget for one git invocation: a fetch to GitHub is the slow one. */
+const GIT_TIMEOUT_MS = 20000
+
+/** How many directories above this module are searched for a checkout. */
+const ANCESTOR_LIMIT = 6
 
 /**
  * Custom request header the Client half sends and every mutating route demands.
@@ -497,6 +524,341 @@ function launchHelper(plan) {
 }
 
 /**
+ * Locate the checkout this plugin was loaded from.
+ *
+ * No personal path is written down here. The Host half of this plugin lives in
+ * `<checkout>/dsh-reload/index.js`, so the directory above this module is the
+ * checkout by construction; a profile dependency installed as a junction or as a
+ * `link:` resolves to that real directory, which is why the search starts there
+ * and then walks up (a plugin copied one level deeper still finds it).
+ * `DSH_BOND_PLUGINS` wins when it is set: that covers a Host started with
+ * `--preserve-symlinks` and a checkout that moved somewhere unrelated.
+ * @param {object} [options] - seams for tests: `env`, `moduleUrl`, `isRepo`.
+ * @returns {{ok: boolean, root: string|null, source: string, error?: string}} where the checkout is.
+ */
+export function findRepoRoot(options = {}) {
+  const env = options.env ?? process.env
+  const moduleUrl = options.moduleUrl ?? import.meta.url
+  const isRepo = options.isRepo ?? ((directory) => existsSync(join(directory, '.git')))
+  const override = String(env[REPO_ENV] ?? '').trim()
+  if (override !== '') {
+    const root = resolvePath(override)
+    if (!isRepo(root)) {
+      return { ok: false, root, source: 'env', error: `${REPO_ENV} points at "${root}", which is not a git checkout` }
+    }
+    return { ok: true, root, source: 'env' }
+  }
+  let directory
+  try {
+    directory = dirname(fileURLToPath(moduleUrl))
+  } catch {
+    return { ok: false, root: null, source: 'none', error: 'the plugin directory cannot be resolved from its module URL' }
+  }
+  const start = directory
+  for (let depth = 0; depth <= ANCESTOR_LIMIT; depth += 1) {
+    if (isRepo(directory)) return { ok: true, root: directory, source: depth === 0 ? 'plugin' : 'parent' }
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
+  }
+  return {
+    ok: false,
+    root: null,
+    source: 'none',
+    error: `no git checkout in "${start}" or above it; set ${REPO_ENV} to the checkout path`,
+  }
+}
+
+const runFile = promisify(execFile)
+
+/**
+ * Run one git command in a checkout, asynchronously.
+ *
+ * Asynchronous on purpose: `git fetch` waits for the network, and a synchronous
+ * call would hold the whole Host event loop — every running agent included — for
+ * as long as GitHub takes to answer.
+ * @param {string} cwd - the checkout.
+ * @param {string[]} args - arguments after `git -C <cwd>`.
+ * @returns {Promise<{ok: boolean, stdout: string, error?: string, code?: string}>} the captured result.
+ */
+export async function runGit(cwd, args) {
+  try {
+    const value = await runFile('git', ['-C', cwd, ...args], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    })
+    return { ok: true, stdout: String(value.stdout ?? '').trim() }
+  } catch (error) {
+    const record = error !== null && typeof error === 'object' ? error : {}
+    const missing = record.code === 'ENOENT'
+    const stderr = typeof record.stderr === 'string' ? record.stderr.trim() : ''
+    const first = stderr === '' ? '' : stderr.split(/\r?\n/u)[0]
+    const message = error instanceof Error ? error.message.split(/\r?\n/u)[0] : String(error)
+    return {
+      ok: false,
+      stdout: typeof record.stdout === 'string' ? record.stdout.trim() : '',
+      error: first !== '' ? first : message,
+      code: missing ? 'no-git' : 'git-failed',
+    }
+  }
+}
+
+/**
+ * A branch name that is safe to put into `origin/<branch>` and into a refspec.
+ * @param {unknown} value - the candidate.
+ * @returns {string|null} the branch, or `null` when it cannot be used.
+ */
+function safeBranch(value) {
+  if (typeof value !== 'string') return null
+  if (!/^[\w][\w./-]*$/u.test(value)) return null
+  return value
+}
+
+/** `origin/<branch>` for a branch already checked by {@link safeBranch}. */
+function remoteRef(branch) {
+  return `origin/${branch}`
+}
+
+/**
+ * Plugin directories the repository declares, with their package names.
+ *
+ * The list is the repository's own manifest (plugins.json) — the same file the
+ * tables in README.md are built from — so a plugin added tomorrow shows up in
+ * the version check without touching this code. A checkout without the manifest
+ * falls back to every depth-one directory that has a package.json.
+ * @param {string} repo - the checkout.
+ * @param {Function} run - the git runner.
+ * @param {Function} readFile - test seam for reading plugins.json.
+ * @returns {Promise<Array<{dir: string, name: string|null}>>} the declared plugins.
+ */
+async function declaredPlugins(repo, run, readFile) {
+  try {
+    const text = readFile(join(repo, 'plugins.json'))
+    const manifest = JSON.parse(text)
+    const list = Array.isArray(manifest?.plugins) ? manifest.plugins : []
+    const found = []
+    for (const entry of list) {
+      const dir = String(entry?.dir ?? '').trim()
+      if (dir === '' || /^[\w][\w.-]*$/u.test(dir) === false) continue
+      found.push({ dir, name: typeof entry?.name === 'string' ? entry.name : null })
+    }
+    if (found.length > 0) return found
+  } catch {
+    // No manifest, or an unreadable one: fall back to the tree below.
+  }
+  const tree = await run(repo, ['ls-tree', '-r', '--name-only', 'HEAD'])
+  if (!tree.ok) return []
+  const found = []
+  for (const line of tree.stdout.split(/\r?\n/u)) {
+    const parts = line.trim().split('/')
+    if (parts.length !== 2 || parts[1] !== 'package.json') continue
+    if (/^[\w][\w.-]*$/u.test(parts[0]) === false) continue
+    found.push({ dir: parts[0], name: null })
+  }
+  return found
+}
+
+/**
+ * package.json of one plugin as one revision sees it.
+ * @param {string} repo - the checkout.
+ * @param {Function} run - the git runner.
+ * @param {string} revision - `HEAD` or `origin/<branch>`.
+ * @param {string} dir - the plugin directory.
+ * @returns {Promise<{name: string|null, version: string|null}|null>} the parsed manifest.
+ */
+async function versionAt(repo, run, revision, dir) {
+  const exists = await run(repo, ['cat-file', '-e', revision + ':' + dir + '/package.json'])
+  if (!exists.ok) return null
+  const shown = await run(repo, ['show', revision + ':' + dir + '/package.json'])
+  if (!shown.ok) return null
+  try {
+    const value = JSON.parse(shown.stdout)
+    return {
+      name: typeof value?.name === 'string' ? value.name : null,
+      version: typeof value?.version === 'string' ? value.version : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Which declared plugins the incoming commits actually touch.
+ *
+ * This is the answer to "do I have to re-install everything because one plugin
+ * moved?": `git diff` is grouped by the first path segment, so the result names
+ * the directories that changed and nothing else. Versions come from the
+ * package.json of each side, so a release that only bumped peer-bus is reported
+ * as peer-bus alone.
+ * @param {string} repo - the checkout.
+ * @param {Function} run - the git runner.
+ * @param {string} branch - the compared branch.
+ * @param {object} [options] - seam: `readFile`.
+ * @returns {Promise<{plugins: Array<object>, error: string|null}>} the changed plugins.
+ */
+async function changedPluginsBetween(repo, run, branch, options = {}) {
+  const readFile = options.readFile ?? ((file) => readFileSync(file, 'utf8'))
+  const diff = await run(repo, ['diff', '--name-only', 'HEAD..' + remoteRef(branch)])
+  if (!diff.ok) return { plugins: [], error: diff.error ?? 'git diff failed' }
+  const touched = new Map()
+  for (const line of diff.stdout.split(/\r?\n/u)) {
+    const path = line.trim()
+    if (path === '') continue
+    const dir = path.split('/')[0]
+    if (dir === '') continue
+    touched.set(dir, (touched.get(dir) ?? 0) + 1)
+  }
+  if (touched.size === 0) return { plugins: [], error: null }
+  const known = await declaredPlugins(repo, run, readFile)
+  const plugins = []
+  for (const entry of known) {
+    if (touched.has(entry.dir) === false) continue
+    const before = await versionAt(repo, run, 'HEAD', entry.dir)
+    const after = await versionAt(repo, run, remoteRef(branch), entry.dir)
+    plugins.push({
+      dir: entry.dir,
+      name: entry.name ?? after?.name ?? before?.name ?? entry.dir,
+      from: before?.version ?? null,
+      to: after?.version ?? null,
+    })
+  }
+  return { plugins, error: null }
+}
+
+/**
+ * Compare the installed checkout with its remote branch.
+ *
+ * Read-only by construction: the only network command is `git fetch`, which
+ * updates remote-tracking refs under `.git` and leaves both the working tree and
+ * the checked-out commit untouched. Nothing is pulled, merged or installed — a
+ * plugin executes code inside the Host, so an update is never applied silently.
+ * @param {object} [options] - seams for tests: `repo`, `branch`, `run`, `fetch`, `env`, `moduleUrl`, `isRepo`.
+ * @returns {Promise<object>} plain JSON: `{ok, installed, remote, behind, ahead, branch, repo, fetched, dirty, warning}`.
+ */
+export async function checkUpdates(options = {}) {
+  const run = options.run ?? runGit
+  const found = options.repo !== undefined && options.repo !== null
+    ? { ok: true, root: resolvePath(String(options.repo)), source: 'explicit' }
+    : findRepoRoot({ env: options.env, moduleUrl: options.moduleUrl, isRepo: options.isRepo })
+  if (found.root === null || found.ok !== true) {
+    return {
+      ok: false,
+      reason: 'no-repo',
+      error: found.error ?? 'the plugins checkout was not found',
+      hint: `set ${REPO_ENV} to the checkout path`,
+    }
+  }
+  const repo = found.root
+  const head = await run(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  if (!head.ok) {
+    const reason = head.code === 'no-git' ? 'no-git' : 'no-repo'
+    return { ok: false, reason, repo, error: head.error ?? 'git could not read HEAD' }
+  }
+  const installed = await run(repo, ['rev-parse', '--short', 'HEAD'])
+  if (!installed.ok || installed.stdout === '') {
+    const reason = installed.code === 'no-git' ? 'no-git' : 'no-repo'
+    return { ok: false, reason, repo, error: installed.error ?? 'the checkout has no commit yet' }
+  }
+
+  const branch = safeBranch(options.branch) ?? safeBranch(head.stdout) ?? DEFAULT_BRANCH
+  const result = {
+    ok: true,
+    repo,
+    branch,
+    installed: installed.stdout,
+    remote: null,
+    behind: null,
+    ahead: null,
+    fetched: false,
+    dirty: null,
+    warning: null,
+    // Which declared plugins the incoming commits touch; filled in below only
+    // when there is something to compare.
+    changedPlugins: [],
+    checkedAt: new Date().toISOString(),
+  }
+
+  const remotes = await run(repo, ['remote'])
+  const names = remotes.ok ? remotes.stdout.split(/\r?\n/u).map((line) => line.trim()) : []
+  if (!names.includes('origin')) {
+    result.warning = 'the checkout has no "origin" remote, so there is nothing to compare with'
+    return result
+  }
+
+  if (options.fetch !== false) {
+    const fetched = await run(repo, ['fetch', '--quiet', '--prune', 'origin', branch])
+    if (fetched.ok) {
+      result.fetched = true
+    } else if (fetched.code === 'no-git') {
+      return { ok: false, reason: 'no-git', repo, error: fetched.error }
+    } else {
+      // Being offline is not a failure of the check itself: the cached remote ref
+      // still says how far behind the checkout was at the last successful fetch.
+      result.warning = `git fetch failed: ${fetched.error ?? 'unknown error'}`
+    }
+  }
+
+  const remote = await run(repo, ['rev-parse', '--short', remoteRef(branch)])
+  if (remote.ok && remote.stdout !== '') {
+    result.remote = remote.stdout
+    const behind = await run(repo, ['rev-list', '--count', `HEAD..${remoteRef(branch)}`])
+    const ahead = await run(repo, ['rev-list', '--count', `${remoteRef(branch)}..HEAD`])
+    const behindCount = Number.parseInt(behind.stdout, 10)
+    const aheadCount = Number.parseInt(ahead.stdout, 10)
+    if (behind.ok && Number.isFinite(behindCount)) result.behind = behindCount
+    if (ahead.ok && Number.isFinite(aheadCount)) result.ahead = aheadCount
+  } else if (result.warning === null) {
+    result.warning = `the remote branch ${remoteRef(branch)} is unknown; run the check again once the fetch succeeds`
+  }
+
+  const status = await run(repo, ['status', '--porcelain'])
+  if (status.ok) result.dirty = status.stdout !== ''
+
+  if (result.behind !== null && result.behind > 0 && result.remote !== null) {
+    const changed = await changedPluginsBetween(repo, run, branch, options)
+    result.changedPlugins = changed.plugins
+    if (changed.error !== null && result.warning === null) result.warning = changed.error
+  }
+  return result
+}
+
+/**
+ * Answer one plugins-version request.
+ *
+ * No guard header: the answer is read-only, so a foreign page gains nothing from
+ * calling it, and the page itself calls it without any extra ceremony.
+ * @param {object} ctx - the plugin context (unused; kept for the route shape).
+ * @param {import('node:http').IncomingMessage} request - the incoming request.
+ * @param {import('node:http').ServerResponse} response - the response to own.
+ * @param {object} [deps] - seam for tests: `check`.
+ */
+export async function handleUpdates(ctx, request, response, deps = {}) {
+  if (request.method !== 'GET') {
+    response.setHeader('allow', 'GET')
+    reply(response, 405, { ok: false, error: 'GET only' })
+    return
+  }
+  let fetch = true
+  try {
+    const url = new URL(String(request.url ?? UPDATES_ROUTE), 'http://localhost')
+    const raw = url.searchParams.get('fetch')
+    if (raw === '0' || raw === 'false') fetch = false
+  } catch {
+    // An unparsable URL keeps the default: a full check.
+  }
+  let value
+  try {
+    value = await (deps.check ?? checkUpdates)({ fetch })
+  } catch (error) {
+    reply(response, 500, { ok: false, reason: 'internal', error: error instanceof Error ? error.message : String(error) })
+    return
+  }
+  reply(response, value?.ok === true ? 200 : 503, value)
+}
+
+/**
  * Answer one reload request.
  * @param {object} ctx - the plugin context.
  * @param {import('node:http').IncomingMessage} request - the incoming request.
@@ -573,6 +935,11 @@ export function apply(ctx) {
           }
           reply(response, 200, { ok: true, process: processFacts() })
         },
+      }),
+      server.register({
+        kind: 'exact',
+        path: UPDATES_ROUTE,
+        handler: (request, response) => handleUpdates(ctx, request, response),
       }),
     ]
     return () => {

@@ -1,5 +1,8 @@
 # dsh-bond-plugins
 
+[![CI](https://github.com/Bondartsov/dsh-bond-plugins/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Bondartsov/dsh-bond-plugins/actions/workflows/ci.yml)
+[![Последний релиз](https://img.shields.io/github/v/release/Bondartsov/dsh-bond-plugins?sort=semver&display_name=tag)](https://github.com/Bondartsov/dsh-bond-plugins/releases/latest)
+
 Коллекция плагинов для **DeepSeek Harness (DSH)** — десктопного агентского харнесса.
 Все плагины написаны под спецификацию DSH 2.x, не имеют внешних зависимостей и работают
 как на Windows, так и на Linux/macOS (кроме служебных PowerShell-скриптов).
@@ -84,6 +87,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1
 Практическое правило: сначала ⟳; если поведение не изменилось — перезапустите DSH. Строка
 «Reload DSH» показывает `pending` и `restartReason` — если там непусто, reconcile не справился и
 нужен перезапуск.
+
+## Как узнавать об обновлениях
+
+Обновление **не приходит само**: плагины исполняют код внутри DSH, поэтому молча
+подменять их нельзя — установку запускает владелец. Узнать о новой версии можно
+тремя способами:
+
+| Способ | Что сделать | Что видно |
+|---|---|---|
+| Страница **Reload DSH** в DSH | открыть панель, нажать «проверить обновления» | «Версия плагинов: b940b91» и итог: «обновлений нет» либо «доступно N коммитов — запустите update.ps1» |
+| Скрипт | `powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1 -Check` | «установлена версия X, доступна Y» и список новых коммитов; ничего не меняется |
+| GitHub | подписаться на Releases репозитория (Watch → Releases) | письмо или лента о новом выпуске; подробности — в `CHANGELOG.md` плагинов |
+
+Проверка в DSH и `-Check` делают одно и то же: `git fetch` и сравнение текущего
+коммита с `origin/main`. Ни та ни другая **ничего не устанавливают** — ни
+`git pull`, ни `pnpm install` не запускаются, в `.git` обновляются только ссылки
+на удалённые ветки.
+
+Нашли обновление — применяйте вручную:
+
+```powershell
+cd dsh-bond-plugins
+powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1
+```
+
+…и затем ⟳ **или** полный перезапуск DSH по таблице из раздела «Обновление»
+(если менялся `client.js` — только полный перезапуск).
+
+Что именно изменилось — смотрите в `CHANGELOG.md` каждого плагина и во вкладке
+[Releases](../../releases) этого репозитория.
 
 ## Как это устроено
 

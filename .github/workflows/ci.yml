@@ -2,6 +2,10 @@ name: tests
 
 # Плагины проверяются тестами на каждом push и pull request.
 # Windows выбран специально: плагины работают с путями Windows, профилем DSH и PowerShell.
+#
+# Node.js 24 — версия, в которой `node:sqlite` доступен без флага `--experimental-sqlite`
+# (тесты dsh-migrate открывают настоящую базу SQLite), и та же версия, на которую
+# GitHub Actions и так переводит сами экшены.
 
 on:
   push:
@@ -27,11 +31,103 @@ jobs:
 
     name: ${{ matrix.plugin }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
+
+      - name: Версия Node
+        shell: pwsh
+        run: node --version
+
+      # Тесты dsh-migrate читают «чужие» конфиги (Claude Code, Codex, ZCode, OpenCode) из
+      # домашнего каталога и требуют, чтобы там что-то было. На чистом раннере этих
+      # каталогов нет, поэтому подкладываем синтетический домашний каталог: плагин
+      # проверяется на нём, а личные конфиги разработчика в проверке не участвуют.
+      # Набор файлов минимален: скилы, MCP-серверы, env-секрет (канированное значение)
+      # и патч профиля, в который плагин дописывает свои строки.
+      - name: Синтетический домашний каталог (только dsh-migrate)
+        if: matrix.plugin == 'dsh-migrate'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $homeDir = Join-Path $env:RUNNER_TEMP 'migrate-home'
+          $profileDir = Join-Path $homeDir '.dsh\profiles\desktop'
+          Remove-Item -Recurse -Force $homeDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+
+          # Канированное значение: тест «секрет не утекает в вывод плагина» ищет именно его.
+          $canary = 'sk-canary-0123456789abcdefghijklmnop'
+
+          # 1. Скил Claude Code — источник строки «скилы» в дереве.
+          $skillDir = Join-Path $homeDir '.claude\skills\fixture-skill'
+          New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
+          @(
+            '---'
+            'name: fixture-skill'
+            'description: Скил, который подставляет CI вместо настоящего чужого каталога.'
+            '---'
+            ''
+            '# fixture-skill'
+          ) -join "`n" | Set-Content -LiteralPath (Join-Path $skillDir 'SKILL.md') -Encoding utf8
+
+          # 2. Включённый плагин Claude Code со своим скилом — группа «плагины».
+          $cacheSkill = Join-Path $homeDir '.claude\plugins\cache\fixture-market\fixture-plugin\1.0.0\skills\plugin-skill'
+          New-Item -ItemType Directory -Force -Path $cacheSkill | Out-Null
+          @(
+            '---'
+            'name: plugin-skill'
+            'description: Скил, который поставляет включённый плагин.'
+            '---'
+            ''
+            '# plugin-skill'
+          ) -join "`n" | Set-Content -LiteralPath (Join-Path $cacheSkill 'SKILL.md') -Encoding utf8
+
+          $settings = [ordered]@{
+            env = [ordered]@{ N8N_API_KEY = $canary }
+            enabledPlugins = [ordered]@{ 'fixture-plugin@fixture-market' = $true }
+          } | ConvertTo-Json -Depth 6
+          Set-Content -LiteralPath (Join-Path $homeDir '.claude\settings.json') -Value $settings -Encoding utf8
+
+          # 3. MCP-серверы Claude Code: stdio с env-секретом и HTTP с токеном в заголовке.
+          $claudeJson = [ordered]@{
+            mcpServers = [ordered]@{
+              'fixture-stdio' = [ordered]@{ command = 'npx'; args = @('-y', 'fixture-pkg'); env = [ordered]@{ FIXTURE_MCP_KEY = $canary } }
+              'fixture-http' = [ordered]@{ url = 'https://example.invalid/mcp'; headers = [ordered]@{ Authorization = "Bearer $canary" } }
+            }
+          } | ConvertTo-Json -Depth 8
+          Set-Content -LiteralPath (Join-Path $homeDir '.claude.json') -Value $claudeJson -Encoding utf8
+
+          # 4. Токены в конфигах остальных агентов — их читают тесты секретов.
+          New-Item -ItemType Directory -Force -Path (Join-Path $homeDir '.codex') | Out-Null
+          @('model = "fixture"', 'api_key = "' + $canary + '"') -join "`n" |
+            Set-Content -LiteralPath (Join-Path $homeDir '.codex\config.toml') -Encoding utf8
+
+          New-Item -ItemType Directory -Force -Path (Join-Path $homeDir '.zcode\cli') | Out-Null
+          [ordered]@{ token = $canary } | ConvertTo-Json |
+            Set-Content -LiteralPath (Join-Path $homeDir '.zcode\cli\config.json') -Encoding utf8
+
+          New-Item -ItemType Directory -Force -Path (Join-Path $homeDir '.opencode') | Out-Null
+          [ordered]@{ mcp = [ordered]@{ fixture = [ordered]@{ apiKey = $canary } } } | ConvertTo-Json -Depth 5 |
+            Set-Content -LiteralPath (Join-Path $homeDir '.opencode\mcp_settings.json') -Encoding utf8
+
+          # 5. Патч профиля: плагин дописывает сюда MCP-строки, без файла он отказывается работать.
+          @(
+            '# Профиль CI: минимальный патч, в который плагин дописывает MCP-строки.'
+            '- insert:'
+            '    - id: fixture-profile'
+            '      name: "@local/fixture-profile-plugin"'
+          ) -join "`n" | Set-Content -LiteralPath (Join-Path $profileDir 'cordis.patch.yml') -Encoding utf8
+
+          # 6. Тесты читают домашний каталог через os.homedir() и переменные DSH.
+          "USERPROFILE=$homeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "HOME=$homeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "DSH_HOME=$(Join-Path $homeDir '.dsh')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "DSH_PROFILE_DIR=$profileDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "Синтетический домашний каталог: $homeDir"
+          Get-ChildItem -Recurse -File $homeDir | ForEach-Object { '  ' + $_.FullName.Replace($homeDir, '') }
 
       - name: Тесты ${{ matrix.plugin }}
         shell: pwsh

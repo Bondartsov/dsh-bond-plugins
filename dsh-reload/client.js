@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
 		const ROUTE_RELOAD = "/dsh-reload/reload";
 		const ROUTE_RESTART = "/dsh-reload/restart";
 		const ROUTE_STATUS = "/dsh-reload/status";
+		const ROUTE_UPDATES = "/dsh-reload/updates";
 
 		/** Header the Host routes demand, so only this page can call them. */
 		const HEADER = "x-dsh-reload";
@@ -31,6 +32,19 @@ window.__ModuleLoader__.load({
 			"process.started": "запущен {at}",
 			"process.unknown": "Состояние процесса недоступно",
 			"process.refresh": "Обновить",
+			"update.installed": "Версия плагинов: {version}",
+			"update.unknown": "Версия плагинов: не определена",
+			"update.check": "проверить обновления",
+			"update.checking": "проверяю…",
+			"update.current": "обновлений нет",
+			"update.behindOne": "доступен {count} коммит — запустите update.ps1",
+			"update.behindMany": "доступно {count} коммитов — запустите update.ps1",
+			"update.ahead": "локальных коммитов впереди: {count}",
+			"update.failed": "Не удалось проверить обновления",
+			"update.offline": "удалённую версию узнать не удалось: {error}",
+			"update.dirty": "в репозитории есть непринятые изменения — update.ps1 остановится",
+			"update.hint":
+				"Проверка ничего не устанавливает: плагины исполняют код, поэтому обновление запускается вручную — update.ps1",
 			"reload.title": "Перезагрузить плагины",
 			"reload.body":
 				"Профиль собирается заново: плагины с изменёнными на диске файлами перезапускаются, упавшие импорты повторяются, страница обновляется. Приложение остаётся открытым.",
@@ -76,6 +90,18 @@ window.__ModuleLoader__.load({
 			"process.started": "started {at}",
 			"process.unknown": "Process state is unavailable",
 			"process.refresh": "Refresh",
+			"update.installed": "Plugins version: {version}",
+			"update.unknown": "Plugins version: unknown",
+			"update.check": "check for updates",
+			"update.checking": "checking…",
+			"update.current": "up to date",
+			"update.behindOne": "{count} commit available — run update.ps1",
+			"update.behindMany": "{count} commits available — run update.ps1",
+			"update.ahead": "local commits ahead: {count}",
+			"update.failed": "The update check failed",
+			"update.offline": "the remote version is unavailable: {error}",
+			"update.dirty": "the checkout has uncommitted changes — update.ps1 will refuse",
+			"update.hint": "The check installs nothing: plugins execute code, so updating stays a manual step — update.ps1",
 			"reload.title": "Reload plugins",
 			"reload.body":
 				"The profile is recomposed: plugins whose files changed on disk restart, failed imports are retried, the page refreshes. The application stays open.",
@@ -151,6 +177,10 @@ window.__ModuleLoader__.load({
 			".dshReload_status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 0;",
 			"color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;max-width:900px}",
 			".dshReload_dot{width:8px;height:8px;border-radius:50%;background:var(--dsw-alias-state-success-primary);flex:none}",
+			".dshReload_versions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 0;",
+			"color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;max-width:900px}",
+			".dshReload_versionsWarn{color:var(--dsw-alias-state-warn-primary)}",
+			".dshReload_btnInline{padding:1px 8px;font-size:12px;line-height:18px}",
 			".dshReload_message{box-sizing:border-box;margin:16px 0 0;max-width:900px;padding:14px 16px;",
 			"border:1px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);",
 			"background:var(--dsw-alias-bg-layer-1)}",
@@ -235,6 +265,60 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
+		 * Read the plugins version, and — when asked — compare it with the remote.
+		 * `remote: false` only reads the installed commit, so the version line appears at
+		 * once and no network request is made until the owner presses the button.
+		 * @param remote - whether the Host should run `git fetch`.
+		 * @returns the route status and its parsed body.
+		 */
+		async function readUpdates(remote) {
+			const query = remote === true ? "" : "?fetch=0";
+			const response = await window.fetch(ROUTE_UPDATES + query, {
+				credentials: "same-origin",
+				cache: "no-store",
+			});
+			const text = await response.text();
+			let value;
+			try {
+				value = text === "" ? {} : JSON.parse(text);
+			} catch {
+				value = { ok: false, error: text.slice(0, 200) };
+			}
+			return { status: response.status, value };
+		}
+
+		/**
+		 * One short line for the version row. Nothing is said until the owner asks:
+		 * the line must not claim "up to date" from a stale local ref.
+		 * @param tr - the page translator.
+		 * @param state - {versions, checked, checking, error} of the version row.
+		 * @returns {tone, text}, or null when there is nothing to report yet.
+		 */
+		function updateVerdict(tr, state) {
+			const { versions, checked, checking, error } = state;
+			if (checking === true) return null;
+			if (error !== null && error !== "") {
+				return { tone: "warn", text: tr("update.failed") + ": " + error };
+			}
+			if (checked !== true || versions === null || versions.ok !== true) return null;
+			if (typeof versions.warning === "string" && versions.warning !== "") {
+				return { tone: "warn", text: tr("update.offline", { error: versions.warning }) };
+			}
+			const behind = Number.isFinite(versions.behind) ? versions.behind : 0;
+			const parts = [];
+			if (behind > 0) {
+				parts.push(tr(behind === 1 ? "update.behindOne" : "update.behindMany", { count: behind }));
+			} else {
+				parts.push(tr("update.current"));
+			}
+			if (Number.isFinite(versions.ahead) && versions.ahead > 0) {
+				parts.push(tr("update.ahead", { count: versions.ahead }));
+			}
+			if (versions.dirty === true) parts.push(tr("update.dirty"));
+			return { tone: behind > 0 ? "warn" : null, text: parts.join(" · ") };
+		}
+
+		/**
 		 * Page «Reload DSH»: the two operations of this plugin side by side, the Host
 		 * process's identity under them, and results reported inline — the panel stays
 		 * open, so nothing hides behind a transient card.
@@ -246,6 +330,11 @@ window.__ModuleLoader__.load({
 			const [processError, setProcessError] = React.useState(null);
 			const [busy, setBusy] = React.useState(null);
 			const [message, setMessage] = React.useState(null);
+			// Plugins version row: the installed commit, plus what the last check found.
+			const [versions, setVersions] = React.useState(null);
+			const [checked, setChecked] = React.useState(false);
+			const [checking, setChecking] = React.useState(false);
+			const [checkError, setCheckError] = React.useState(null);
 			const alive = React.useRef(true);
 
 			const refreshStatus = React.useCallback(() => {
@@ -265,6 +354,15 @@ window.__ModuleLoader__.load({
 			React.useEffect(() => {
 				alive.current = true;
 				refreshStatus();
+				// The installed commit only: no network request until the owner asks for it.
+				readUpdates(false)
+					.then(({ value }) => {
+						if (!alive.current) return;
+						if (value?.ok === true) setVersions(value);
+					})
+					.catch(() => {
+						/* the page works without the version line */
+					});
 				return () => {
 					alive.current = false;
 				};
@@ -272,6 +370,33 @@ window.__ModuleLoader__.load({
 
 			/** Report one outcome inline. */
 			const report = React.useCallback((next) => setMessage(next), []);
+
+			/**
+			 * Ask the Host to compare this checkout with its remote branch. Nothing is
+			 * installed: plugins execute code, so the answer is the only outcome here.
+			 */
+			const runCheck = React.useCallback(() => {
+				if (checking) return;
+				setChecking(true);
+				setCheckError(null);
+				readUpdates(true)
+					.then(({ value }) => {
+						if (!alive.current) return;
+						setChecking(false);
+						setChecked(true);
+						if (value?.ok === true) {
+							setVersions(value);
+							return;
+						}
+						setCheckError(value?.error ?? tr("update.failed"));
+					})
+					.catch((error) => {
+						if (!alive.current) return;
+						setChecking(false);
+						setChecked(true);
+						setCheckError(error instanceof Error ? error.message : String(error));
+					});
+			}, [checking, tr]);
 
 			/** Re-apply the profile, then rebuild the page. */
 			const runReload = React.useCallback(async () => {
@@ -429,6 +554,41 @@ window.__ModuleLoader__.load({
 							h("span", null, tr("process.started", { at: formatTime(process.startedAt) })),
 						);
 
+			const verdict = updateVerdict(tr, { versions, checked, checking, error: checkError });
+			const versionLine = h(
+				"div",
+				{ className: "dshReload_versions", "data-dsh-reload": "versions" },
+				h("span", {
+					className: "dshReload_dot",
+					style:
+						verdict !== null && verdict.tone === "warn"
+							? { background: "var(--dsw-alias-state-warn-primary)" }
+							: undefined,
+				}),
+				h(
+					"span",
+					null,
+					versions !== null && typeof versions.installed === "string"
+						? tr("update.installed", { version: versions.installed })
+						: tr("update.unknown"),
+				),
+				verdict === null
+					? null
+					: h("span", { className: verdict.tone === "warn" ? "dshReload_versionsWarn" : undefined }, verdict.text),
+				h("span", { "aria-hidden": true }, "·"),
+				h(
+					"button",
+					{
+						type: "button",
+						className: "dshReload_btn dshReload_btnInline",
+						disabled: checking,
+						title: tr("update.hint"),
+						onClick: runCheck,
+					},
+					checking ? tr("update.checking") : tr("update.check"),
+				),
+			);
+
 			const messageBlock =
 				message === null
 					? null
@@ -523,6 +683,7 @@ window.__ModuleLoader__.load({
 					}),
 				),
 				statusLine,
+				versionLine,
 				messageBlock,
 			);
 		}
