@@ -4,10 +4,14 @@
  *
  * `plugins.json` — единственный машинный список репозитория, но настоящая версия плагина
  * живёт в его `package.json`. Расхождение означает, что человек и релизный workflow видят
- * разное, поэтому CI падает до сборки. Заодно проверяется, что у текущей версии есть
- * раздел в журнале: без него релиз нечего показывать.
+ * разное, поэтому CI падает до сборки.
  *
- * Запуск: `node scripts/check-versions.mjs` из корня репозитория. Код возврата 1 — есть ошибки.
+ * Наличие раздела текущей версии в `<плагин>/CHANGELOG.md` проверяется МЯГКО: это
+ * предупреждение (`::warning::`), а не падение. Иначе новая версия блокировала бы CI до тех
+ * пор, пока кто-то не допишет журнал, — а журнал и версия приходят разными правками.
+ *
+ * Запуск: `node scripts/check-versions.mjs` из корня репозитория. Код возврата 1 — есть
+ * расхождения в версиях или отсутствует файл; код 0 с `::warning::` — журнал отстаёт.
  */
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -19,6 +23,7 @@ import { hasVersionSection } from './changelog-section.mjs';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const problems = [];
+const warnings = [];
 const rows = [];
 
 /** Прочитать файл или вернуть undefined. */
@@ -95,16 +100,21 @@ for (const plugin of plugins) {
 
   const changelogPath = String(plugin.changelog ?? '');
   const changelogText = changelogPath === '' ? undefined : await readText(join(ROOT, changelogPath));
+  // Мягкая проверка: журнал может отставать от версии, и это не повод блокировать CI —
+  // новая версия не должна ждать правки журнала. Но релиз по тегу без раздела не соберётся,
+  // поэтому предупреждаем явно и называем тег, который в этом случае упадёт.
   if (changelogText === undefined) {
-    problems.push(`${dir}: журнал ${changelogPath || '(не указан)'} не найден`);
+    warnings.push(`${dir}: журнал ${changelogPath || '(не указан)'} не найден — релиз по тегу ${dir}-v${version} не соберётся`);
   } else if (!hasVersionSection(changelogText, version)) {
-    problems.push(`${dir}: в ${changelogPath} нет раздела для версии ${version} — релизу нечего показать`);
+    warnings.push(`${dir}: в ${changelogPath} нет раздела версии ${version} — допишите его до тега ${dir}-v${version}`);
   }
 
   rows.push(`${dir.padEnd(24)} ${version.padEnd(8)} ${name}`);
 }
 
 for (const row of rows) console.log('  ' + row);
+
+for (const warning of warnings) console.log('::warning::' + warning);
 
 if (problems.length > 0) {
   console.error('');
@@ -114,4 +124,4 @@ if (problems.length > 0) {
 }
 
 console.log('');
-console.log(`Согласовано: ${plugins.length} плагинов — plugins.json, package.json и журналы совпадают.`);
+console.log(`Согласовано: ${plugins.length} плагинов — plugins.json и package.json совпадают` + (warnings.length === 0 ? ', разделы журналов на месте.' : `, предупреждений по журналам: ${warnings.length}.`));

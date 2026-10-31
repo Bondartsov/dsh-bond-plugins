@@ -107,7 +107,7 @@ jobs:
           const text = await readFile(plugin.changelog, 'utf8').catch(() => '');
           const section = sectionForVersion(text, version);
           if (section === '') {
-            console.error('::error::в ' + plugin.changelog + ' нет раздела версии ' + version + ' — релизу нечего показать');
+            console.error('::error::в CHANGELOG плагина (' + plugin.changelog + ') нет раздела версии ' + version + ' — допишите "## [' + version + ']" и повторите тег');
             process.exit(1);
           }
 
@@ -124,7 +124,7 @@ jobs:
           notes.push('Собран ' + date + ' ' + time + ' (МСК) из `' + plugin.changelog + '`.');
           notes.push('');
           notes.push('Репозиторий — монорепозиторий с независимыми версиями: этот релиз относится');
-          notes.push('только к `' + dir + '`, версии остальных плагинов не менялись.');
+          notes.push('только к `' + dir + '`, остальные плагины не менялись — их версии в `plugins.json`.');
           notes.push('');
           notes.push('Обновление: `git pull`, затем `powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1`');
           notes.push('и перезагрузка плагинов в DSH ⟳ (или полный перезапуск, если менялась Host-часть).');
