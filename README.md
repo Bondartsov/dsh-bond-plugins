@@ -21,7 +21,7 @@
 |---|---|---|
 | `peer-bus` | 2.1.0 | [peer-bus/CHANGELOG.md](peer-bus/CHANGELOG.md) |
 | `dsh-migrate` | 1.0.0 | [dsh-migrate/CHANGELOG.md](dsh-migrate/CHANGELOG.md) |
-| `dsh-reload` | 1.0.0 | [dsh-reload/CHANGELOG.md](dsh-reload/CHANGELOG.md) |
+| `dsh-reload` | 1.1.0 | [dsh-reload/CHANGELOG.md](dsh-reload/CHANGELOG.md) |
 | `composer-cost` | 1.0.0 | [composer-cost/CHANGELOG.md](composer-cost/CHANGELOG.md) |
 | `composer-cost-day` | 1.0.0 | [composer-cost-day/CHANGELOG.md](composer-cost-day/CHANGELOG.md) |
 | `dsh-subagent-indicator` | 1.0.0 | [dsh-subagent-indicator/CHANGELOG.md](dsh-subagent-indicator/CHANGELOG.md) |
@@ -34,7 +34,7 @@
 |---|---|---|---|
 | [`peer-bus`](peer-bus/README.md) | 2.1.0 | Доска сессий: кто работает, кто чем занят, мастер проекта; обмен сообщениями между сессиями, вопросы/ответы, захват общих ресурсов, ожидание событий | панель «Доска сессий», инструменты `peer_*` |
 | [`dsh-migrate`](dsh-migrate/README.md) | 1.0.0 | Импорт сессий из Claude Code, Codex, ZCode, KiloCode, OpenCode в DSH + миграция ассетов: скиллы, MCP-серверы, секреты, инструкции | панель «Миграция» (2 вкладки) |
-| [`dsh-reload`](dsh-reload/README.md) | 1.0.0 | Кнопка **⟳** «Перезагрузить DSH»: перезагрузка плагинов и клиентских бандлов без перезапуска приложения | кнопка в боковой панели, `POST /dsh-reload/reload` |
+| [`dsh-reload`](dsh-reload/README.md) | 1.1.0 | Кнопка **⟳** «Перезагрузить DSH»: перезагрузка плагинов и клиентских бандлов без перезапуска приложения | кнопка в боковой панели, `POST /dsh-reload/reload` |
 | [`composer-cost`](composer-cost/README.md) | 1.0.0 | Оценка стоимости текущего контекста в рублях: ячейка «≈ N ₽» в доке композера, тарифы моделей | ячейка под композером |
 | [`composer-cost-day`](composer-cost-day/README.md) | 1.0.0 | Расход за день по всем сессиям | без интерфейса (Host) |
 | [`dsh-subagent-indicator`](dsh-subagent-indicator/README.md) | 1.0.0 | Заметный индикатор работы субагентов: подсветка чипа «N subagents» и пульсирующее кольцо | шапка сессии |
@@ -134,7 +134,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1
   плагин                    версия сейчас   каталог в HEAD..origin
   peer-bus                 2.1.0           изменился
   dsh-migrate              1.0.0           —
-  dsh-reload               1.0.0           —
+  dsh-reload               1.1.0           —
   composer-cost            1.0.0           —
   composer-cost-day        1.0.0           —
   dsh-subagent-indicator   1.0.0           —
