@@ -225,7 +225,6 @@ export function createSqliteFamilySource(spec) {
     let provider = '';
     let model = '';
     let createdAt;
-    const results = [];
 
     for (const row of messageRows) {
       const data = parseJsonColumn(row.data);
@@ -279,7 +278,7 @@ export function createSqliteFamilySource(spec) {
         const text = textParts.join('\n\n');
         if (text !== '') messages.push({ role: 'user', text, at: timeOf(data.time?.created ?? row.sequence, undefined) });
         for (const call of calls) {
-          results.push({ role: 'tool', callId: call.callId, text: typeof call.output === 'string' ? call.output : JSON.stringify(call.output ?? ''), isError: call.status === 'error', at: timeOf(data.time?.created ?? row.sequence, undefined) });
+          messages.push({ role: 'tool', callId: call.callId, text: typeof call.output === 'string' ? call.output : JSON.stringify(call.output ?? ''), isError: call.status === 'error', at: timeOf(data.time?.created ?? row.sequence, undefined) });
         }
         continue;
       }
@@ -291,14 +290,13 @@ export function createSqliteFamilySource(spec) {
       }
       for (const value of textParts) content.push({ type: 'text', text: value });
       messages.push({ role: 'assistant', content, at: timeOf(data.time?.created ?? row.sequence, undefined) });
+      // Results stay right after the message that produced them: a transcript whose
+      // results are collected at the end puts the real tail of the conversation in
+      // the middle and loads the last turn with unrelated tool noise.
       for (const call of calls) {
-        results.push({ role: 'tool', callId: call.callId, text: typeof call.output === 'string' ? call.output : JSON.stringify(call.output ?? ''), isError: call.status === 'error', at: timeOf(data.time?.created ?? row.sequence, undefined) });
+        messages.push({ role: 'tool', callId: call.callId, text: typeof call.output === 'string' ? call.output : JSON.stringify(call.output ?? ''), isError: call.status === 'error', at: timeOf(data.time?.created ?? row.sequence, undefined) });
       }
     }
-
-    // Tool results belong right after the message that produced them; the grouping
-    // step only needs them reachable by call id, so order inside the tail is fine.
-    messages.push(...results);
 
     return {
       source: spec.id,
@@ -379,3 +377,4 @@ export function createSqliteFamilySource(spec) {
 
   return { id: spec.id, label: spec.label, status, listSessions, readSession, childSessions, readContext };
 }
+

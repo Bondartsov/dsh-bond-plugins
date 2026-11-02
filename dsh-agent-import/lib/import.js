@@ -450,10 +450,24 @@ export async function reimportImported(ctx, ref) {
   const entry = findImport(source, foreignId);
   const previousSessionId = String(entry?.sessionId ?? sessionIdFor(source, foreignId));
 
-  const sessions = typeof ctx?.get === 'function' ? ctx.get('sessions') : undefined;
-  const live = typeof sessions?.get === 'function' ? sessions.get(previousSessionId) : undefined;
-  if (live !== undefined && live !== null) {
-    return { status: 'busy', sessionId: previousSessionId, rebuilt: false, warnings: ['сессия открыта в приложении; закройте её и повторите переимпорт'] };
+  // A session loaded in the UI is not a running one: this rebuild writes a NEW copy
+  // under a new id and only archives the old one, so an open tab is no obstacle. The
+  // real obstacle is an open turn, i.e. a run that is currently writing the log.
+  let openTurn = false;
+  try {
+    const query = requireService(ctx, 'sessionQuery');
+    const current = await query.readSession(previousSessionId);
+    openTurn = hasOpenTurn(current?.events ?? []);
+  } catch {
+    openTurn = false;
+  }
+  if (openTurn) {
+    return {
+      status: 'busy',
+      sessionId: previousSessionId,
+      rebuilt: false,
+      warnings: ['в этой копии идёт ход (ответ ещё пишется); дождитесь завершения и повторите переимпорт'],
+    };
   }
 
   // Read the source first: an unreadable origin must not cost the existing copy.

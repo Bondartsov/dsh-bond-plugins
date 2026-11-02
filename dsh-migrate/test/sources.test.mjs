@@ -341,3 +341,52 @@ test('sqlite family: spawned sessions are children, a user fork stays top-level'
     'only spawned runs are offered as context, oldest first',
   );
 });
+test('sqlite family: a tool result stays next to its message, so the real tail survives', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dbPath = join(home, 'kilo-home', 'kilo-order.db');
+  await mkdir(join(dbPath, '..'), { recursive: true });
+  const database = new DatabaseSync(dbPath);
+  database.exec(`
+    CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, directory TEXT, title TEXT, time_created INTEGER, time_updated INTEGER, parent_id TEXT);
+    CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT, sequence INTEGER);
+    CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT, sequence INTEGER);
+  `);
+  const sessionId = 'ses_order';
+  database
+    .prepare('INSERT INTO session (id, project_id, directory, title, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(sessionId, 'p1', 'D:\\work\\polza', 'Ordering session', 1_000, 9_000);
+  const insertMessage = database.prepare('INSERT INTO message (id, session_id, time_created, data, sequence) VALUES (?, ?, ?, ?, ?)');
+  const insertPart = database.prepare('INSERT INTO part (id, message_id, session_id, time_created, data, sequence) VALUES (?, ?, ?, ?, ?, ?)');
+  const push = (index, role, parts) => {
+    const id = `m${index}`;
+    insertMessage.run(id, sessionId, 1_000 + index, JSON.stringify({ role, time: { created: 1_000 + index } }), index);
+    parts.forEach((part, partIndex) => insertPart.run(`p${index}_${partIndex}`, id, sessionId, 1_000 + index, JSON.stringify(part), partIndex));
+  };
+  push(0, 'user', [{ type: 'text', text: 'check the images' }]);
+  push(1, 'assistant', [
+    { type: 'step-start' },
+    { type: 'tool', tool: 'bash', callID: 'call_1', state: { status: 'completed', input: { cmd: 'docker images' }, output: '76 images' } },
+    { type: 'step-finish' },
+  ]);
+  push(2, 'assistant', [{ type: 'text', text: 'survey: 76 images' }]);
+  push(3, 'user', [{ type: 'text', text: 'but all of it is needed!' }]);
+  push(4, 'assistant', [{ type: 'text', text: 'nothing working was removed' }]);
+  database.close();
+
+  const store = createSqliteFamilySource({ id: 'kilo', label: 'KiloCode', dbPath: () => dbPath, unavailableHint: 'fixture' });
+  const transcript = await store.readSession({ source: 'kilo', id: sessionId, path: dbPath });
+
+  assert.deepEqual(
+    transcript.messages.map((message) => message.role),
+    ['user', 'assistant', 'tool', 'assistant', 'user', 'assistant'],
+    'a result follows its own message instead of piling up at the end',
+  );
+  assert.equal(transcript.messages.at(-1).role, 'assistant', 'the transcript ends with the real final answer');
+
+  const events = eventsOf({ ...transcript, title: 'Ordering session' });
+  const userMessages = events.filter((event) => event.type === 'user/message');
+  assert.equal(userMessages.length, 2);
+  assert.match(userMessages.at(-1).data.content[0].text, /all of it is needed/u, 'the final question is the last user message');
+  const tail = events.slice(events.indexOf(userMessages.at(-1)));
+  assert.deepEqual(tail.map((event) => event.type), ['user/message', 'assistant/message', 'step/end', 'turn/end']);
+});

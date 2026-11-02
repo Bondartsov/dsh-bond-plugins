@@ -194,6 +194,14 @@ export function createOperations(ctx) {
         // Diagnostics: whether the stored log is mid-run, and how it ends. A copy
         // that ends on an open turn cannot be appended to until it is closed.
         openTurn: hasOpenTurn(events),
+        // The real end of the conversation, so a truncated import is obvious.
+        tail: events
+          .filter((entry) => entry?.type === 'user/message' || entry?.type === 'assistant/message')
+          .slice(-3)
+          .map((entry) => ({
+            role: eventRole(entry),
+            text: eventText(entry).slice(0, 140),
+          })),
         lastEventTypes: events.slice(-5).map((entry) => String(entry?.type ?? '')),
       };
     },
@@ -354,3 +362,22 @@ export function createOperations(ctx) {
 
 
 
+
+
+/** Role of a surface message event. */
+function eventRole(event) {
+  return String(event?.data?.role ?? event?.data?.message?.role ?? '?');
+}
+
+/** Plain text of a surface message event, flattened for a one-line preview. */
+function eventText(event) {
+  const content = event?.data?.content ?? event?.data?.message?.content;
+  if (typeof content === 'string') return content.replace(/\s+/gu, ' ').trim();
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join(' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}

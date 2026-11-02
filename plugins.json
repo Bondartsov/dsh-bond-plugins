@@ -2,7 +2,7 @@
   "schema": 1,
   "owner": "Andrey Bondartsov",
   "license": "MIT",
-  "updatedAt": "31.10.2026 19:57:22",
+  "updatedAt": "02.11.2026 17:05:00",
   "plugins": [
     {
       "name": "@local/dsh-peer-bus",
@@ -17,7 +17,7 @@
     },
     {
       "name": "@local/dsh-migrate",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "dir": "dsh-migrate",
       "purpose": "Импорт сессий из Claude Code, Codex, ZCode, KiloCode, OpenCode и миграция ассетов (скиллы, MCP, секреты, инструкции).",
       "host": true,
@@ -69,17 +69,6 @@
       "readme": "dsh-subagent-indicator/README.md",
       "design": "dsh-subagent-indicator/docs/DESIGN.md",
       "changelog": "dsh-subagent-indicator/CHANGELOG.md"
-    },
-    {
-      "name": "@local/dsh-agent-import",
-      "version": "1.0.0",
-      "dir": "dsh-agent-import",
-      "purpose": "Движок импорта сессий из других агентов: HTTP-маршруты /agent-import/* и инструмент agent_import.",
-      "host": true,
-      "client": true,
-      "readme": "dsh-agent-import/README.md",
-      "design": "dsh-agent-import/docs/DESIGN.md",
-      "changelog": "dsh-agent-import/CHANGELOG.md"
     }
   ]
 }
