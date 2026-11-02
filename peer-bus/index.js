@@ -2861,9 +2861,9 @@ export function apply(ctx) {
         required: true,
         description: 'Complete, self-contained brief for the new session: goal, context, files, acceptance criteria, constraints. It does not see your transcript.',
       },
-      title: {
+      session_title: {
         type: 'string',
-        description: 'Short session title shown in the sidebar (for example "Fix PR 42 crash").',
+        description: 'Short session title shown in the sidebar (for example "Fix PR 42 crash"). Named session_title: "title" is a reserved JSON Schema keyword and breaks strict providers (Z.AI rejects the whole request).',
       },
       cwd: {
         type: 'string',
@@ -2962,7 +2962,8 @@ export function apply(ctx) {
       if (ttlHours !== undefined) spawnTtl.set(sessionId, ttlHours)
       lastSeen.set(sessionId, Date.now())
       saveState()
-      const title = args?.title === undefined ? '' : sanitize(args.title, 80)
+      const rawTitle = args?.session_title !== undefined ? args.session_title : args?.title
+      const title = rawTitle === undefined ? '' : sanitize(rawTitle, 80)
       if (title !== '') {
         try {
           await controller.rename({ sessionId, title })
