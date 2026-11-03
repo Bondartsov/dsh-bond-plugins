@@ -17,20 +17,25 @@ window.__ModuleLoader__.load({
 		const NS = "composerCost";
 
 		/**
-		 * Provider tariffs in rubles per 1M tokens, as published by Polza.AI for the
-		 * routes configured in this profile (`GET /models/{model}` →
-		 * `top_provider.pricing`, read 28.10.2026). `cacheRead` is the cache-hit
-		 * input rate; a cache write is charged at the ordinary input rate because
-		 * the provider publishes no separate write price.
+		 * Provider tariffs in rubles per 1M tokens.
 		 *
-		 * Update these numbers (or add another `provider/model` key) when the
-		 * provider changes its price list; a route absent here renders no cell.
+		 * Base numbers come from Polza.AI's published catalogue
+		 * (`GET /models/{model}` → `top_provider.pricing`, read 28.10.2026). That rate is
+		 * the cheapest route in the catalogue, while billing follows whichever upstream
+		 * answered the call, so the DeepSeek numbers below are scaled by the factor the
+		 * owner's own dashboard shows: on 03.11.2026 Polza charged 432,91 ₽ for the day
+		 * where the published rate priced the same tokens at 101,44 ₽ (×4,27). Re-check
+		 * that factor against `polza-pulse` whenever the billed amount drifts.
+		 *
+		 * `cacheRead` is the cache-hit input rate; a cache write is charged at the
+		 * ordinary input rate because the provider publishes no separate write price.
+		 * A route absent here renders its cell as `— ₽` instead of a made-up figure.
 		 */
 		const TARIFFS = {
 			"polza/deepseek/deepseek-v4.1-flash-1017": {
-				input: 11.530968,
-				output: 17.1252,
-				cacheRead: 0.76892148,
+				input: 49.2099,
+				output: 73.0852,
+				cacheRead: 3.2814,
 			},
 			"polza/minimax/minimax-m3.1-flash": {
 				input: 16.26894,
@@ -110,6 +115,8 @@ window.__ModuleLoader__.load({
 			"panel.noTariff": "нет тарифа",
 			"panel.since": "данные с {date}",
 			"panel.note": "весь лог сессии по тарифу текущей модели",
+			"panel.sourceHost": "источник: реестр Harness",
+			"panel.sourcePage": "источник: страница (реестр Harness недоступен)",
 		};
 
 		/** English wording, kept for a quick switch and for the unrelated `zh` seat. */
@@ -132,6 +139,8 @@ window.__ModuleLoader__.load({
 			"panel.noTariff": "no tariff",
 			"panel.since": "data since {date}",
 			"panel.note": "whole session log at the current model's rate",
+			"panel.sourceHost": "source: Harness ledger",
+			"panel.sourcePage": "source: page (Harness ledger unreachable)",
 		};
 
 		/**
@@ -332,6 +341,28 @@ window.__ModuleLoader__.load({
 				window.localStorage.removeItem(LEGACY_LEDGER_KEY);
 			} catch {
 				// A full or refused storage keeps this page's reading in memory only.
+			}
+		}
+
+		/**
+		 * Read the Host's day ledger: one accumulator fed by every `llm/stream` sample,
+		 * so it covers Sessions this window never opened and counts each call once.
+		 * Served by `@local/composer-cost-day` on a loopback HTTP route.
+		 * @returns `{ days }` when the route answers, otherwise `undefined`.
+		 */
+		async function readHostDays() {
+			try {
+				const response = await fetch(new URL("composer-cost/today", document.baseURI), {
+					headers: { accept: "application/json" },
+				});
+				if (!response.ok) return undefined;
+				const payload = await response.json();
+				if (payload === null || typeof payload !== "object") return undefined;
+				const days = payload.days;
+				if (days === null || typeof days !== "object") return undefined;
+				return { days, today: typeof payload.today === "string" ? payload.today : undefined };
+			} catch {
+				return undefined;
 			}
 		}
 
@@ -643,6 +674,7 @@ window.__ModuleLoader__.load({
 			const cacheWrite = usage === undefined || usage === null ? 0 : usage.cacheWriteTokens ?? 0;
 			const output = usage === undefined || usage === null ? 0 : usage.outputTokens ?? 0;
 			const [ledger, setLedger] = React.useState(() => readPageLedger());
+			const [host, setHost] = React.useState(undefined);
 
 			React.useEffect(() => {
 				const next = observeSession(
@@ -656,13 +688,36 @@ window.__ModuleLoader__.load({
 				setLedger(readPageLedger());
 			}, [day, sessionId, selection, detected, uncached, cacheRead, cacheWrite, output]);
 
-			const today = pricedRoutes(foldWindow(ledger.days, 1));
-			const week = pricedRoutes(foldWindow(ledger.days, 7));
+			// The Host ledger counts every model call once and sees Sessions this window
+			// never opened, so it is the preferred source; the page's own deltas are the
+			// fallback when the loopback route is unreachable.
+			React.useEffect(() => {
+				let alive = true;
+				const read = async () => {
+					const payload = await readHostDays();
+					if (alive && payload !== undefined) setHost(payload);
+				};
+				void read();
+				const timer = window.setInterval(() => {
+					void read();
+				}, 15000);
+				return () => {
+					alive = false;
+					window.clearInterval(timer);
+				};
+			}, []);
+
+			const sourceDays = host !== undefined ? host.days : ledger.days;
+			const today = pricedRoutes(foldWindow(sourceDays, 1));
+			const week = pricedRoutes(foldWindow(sourceDays, 7));
 			// Nothing observed yet — a fresh ledger or no Session seen. Say so rather than
 			// printing a figure this plugin cannot know.
 			const empty = today.total === 0 && week.total === 0;
 			// The first day the ledger holds explains why a week can equal a day.
-			const firstDay = ledger.since ?? Object.keys(ledger.days).sort()[0];
+			const firstDay =
+				host !== undefined
+					? Object.keys(host.days).sort()[0]
+					: ledger.since ?? Object.keys(ledger.days).sort()[0];
 
 			const panel = open && !empty
 				? h(TotalsPanel, {
@@ -681,10 +736,12 @@ window.__ModuleLoader__.load({
 								total: week.total,
 							},
 						],
-						footnote:
-							firstDay === undefined
-								? undefined
-								: tr("panel.since", { date: formatDay(firstDay) }),
+						footnote: [
+							firstDay === undefined ? undefined : tr("panel.since", { date: formatDay(firstDay) }),
+							tr(host !== undefined ? "panel.sourceHost" : "panel.sourcePage"),
+						]
+							.filter(Boolean)
+							.join(" · "),
 						floating: createPortal !== null && position !== undefined,
 						position: createPortal !== null && position !== undefined ? position : undefined,
 					})

@@ -18,7 +18,6 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import crypto from "node:crypto";
 
 /** Ledger schema generation; bump when the stored shape changes. */
 const STORE_VERSION = 1;
@@ -31,9 +30,6 @@ const KEEP_DAYS = 60;
 
 /** Route path the page reads; kept beside the route registration below. */
 const ROUTE_PATH = "/composer-cost/today";
-
-/** Injected page global carrying the per-process read token. */
-const TOKEN_GLOBAL = "__DSH_COST_TOKEN__";
 
 /** The web carrier is the one Host service this half cannot work without. */
 export const inject = ["webServer"];
@@ -94,7 +90,6 @@ function loadLedger(file) {
 export function apply(ctx) {
   const home = process.env.DSH_HOME ?? path.join(os.homedir(), ".dsh");
   const file = path.join(home, "storages", "composer-cost", "daily.json");
-  const token = crypto.randomUUID();
 
   const days = loadLedger(file);
   let saveTimer = null;
@@ -163,33 +158,18 @@ export function apply(ctx) {
             response.end();
             return;
           }
-          const url = new URL(request.url ?? "/", "http://localhost");
-          if (url.searchParams.get("token") !== token) {
-            response.writeHead(403);
-            response.end();
-            return;
-          }
+
           const day = localDay();
           response.writeHead(200, {
             "content-type": "application/json; charset=utf-8",
             "cache-control": "no-store",
           });
-          response.end(JSON.stringify({ version: STORE_VERSION, date: day, models: days[day] ?? {} }));
+          response.end(JSON.stringify({ version: STORE_VERSION, today: day, days }));
         },
       }),
     "composer-cost-day: today route",
   );
 
-  ctx.effect(
-    () =>
-      ctx.webServer.tapIndex((html) => {
-        const marker = "</head>";
-        if (!html.includes(marker)) return html;
-        const script = `<script>window.${TOKEN_GLOBAL}=${JSON.stringify(token)}</script>`;
-        return html.replace(marker, `${script}${marker}`);
-      }),
-    "composer-cost-day: page token",
-  );
 
   ctx.effect(
     () => () => {

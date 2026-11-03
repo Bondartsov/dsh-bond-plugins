@@ -1,6 +1,6 @@
 {
   "name": "@local/composer-cost-day",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Daily spend ledger by model route, served to the composer cost cells.",

@@ -50,9 +50,9 @@
     },
     {
       "name": "@local/composer-cost-day",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "dir": "composer-cost-day",
-      "purpose": "Счётчик расхода за день по всем сессиям; Host-часть без интерфейса.",
+      "purpose": "Гроссбух расхода по всем сессиям и маршрутам: маршрут `/composer-cost/today` для ячеек композера.",
       "host": true,
       "client": false,
       "readme": "composer-cost-day/README.md",
