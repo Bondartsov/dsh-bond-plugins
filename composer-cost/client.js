@@ -103,6 +103,7 @@ window.__ModuleLoader__.load({
 			"panel.route": "Маршрут",
 			"panel.tokens": "{count} ток",
 			"pill.total": "Итого: ≈ {amount} ₽",
+			"pill.noData": "Итого: —",
 			"panel.dayTitle": "За день",
 			"panel.weekTitle": "За неделю",
 			"panel.dayEmpty": "Пока не тратилось",
@@ -124,6 +125,7 @@ window.__ModuleLoader__.load({
 			"panel.route": "Route",
 			"panel.tokens": "{count} tok",
 			"pill.total": "Total ≈ {amount} ₽",
+			"pill.noData": "Total: —",
 			"panel.dayTitle": "Today",
 			"panel.weekTitle": "This week",
 			"panel.dayEmpty": "Nothing spent yet",
@@ -252,15 +254,28 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * The page's own day ledger: `{ "YYYY-MM-DD": { [sessionId]: { route, buckets } } }`.
+		 * The page's own day ledger, version 2:
+		 *
+		 * ```js
+		 * { days: { "YYYY-MM-DD": { [route]: buckets } },
+		 *   seen: { [sessionId]: { route, buckets } },
+		 *   since: "YYYY-MM-DD" }
+		 * ```
 		 *
 		 * The desktop shell serves this page from `dsh-app://app`, so no page can read
-		 * the Host's HTTP ledger route; the shell origin is stable, while the Web GUI's
-		 * port is not, which makes `localStorage` the one durable container here. Every
-		 * Session records its own whole-log totals the moment this cell sees it, and
-		 * a later reading replaces an earlier one because `tokenUsage` only grows.
+		 * the Host's HTTP ledger route; the shell origin is stable while the Web GUI's
+		 * port is not, which makes `localStorage` the one durable container here.
+		 *
+		 * `tokenUsage` is a **whole-log** total, so a Session's history cannot be split
+		 * by day or by route. The ledger therefore stores the delta against the last
+		 * reading of each Session: a token lands on the day this page first saw it. A
+		 * Session read for the first time — or right after a model switch — only sets a
+		 * new baseline, because its past is not attributable.
 		 */
-		const LEDGER_KEY = "dshCost.ledger.v1";
+		const LEDGER_KEY = "dshCost.ledger.v2";
+
+		/** Superseded first ledger shape, dropped on the first write of this version. */
+		const LEGACY_LEDGER_KEY = "dshCost.ledger.v1";
 
 		/** Days the page ledger keeps. */
 		const LEDGER_KEEP_DAYS = 30;
@@ -271,46 +286,87 @@ window.__ModuleLoader__.load({
 			return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 		}
 
+		/** One route's four additive token buckets. */
+		function zeroBuckets() {
+			return { uncached: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+		}
+
+		/** @returns an empty page ledger. */
+		function emptyLedger() {
+			return { days: {}, seen: {} };
+		}
+
 		/** @returns the page ledger, or an empty one when storage is unavailable. */
 		function readPageLedger() {
 			try {
 				const raw = window.localStorage.getItem(LEDGER_KEY);
 				const parsed = raw === null ? undefined : JSON.parse(raw);
-				if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+				if (
+					parsed !== null &&
+					typeof parsed === "object" &&
+					parsed.days !== null &&
+					typeof parsed.days === "object" &&
+					parsed.seen !== null &&
+					typeof parsed.seen === "object"
+				) {
+					return {
+						days: parsed.days,
+						seen: parsed.seen,
+						since: typeof parsed.since === "string" ? parsed.since : undefined,
+					};
+				}
 			} catch {
 				// Private mode or a hostile storage policy leaves the ledger empty.
 			}
-			return {};
+			return emptyLedger();
 		}
 
 		/** Persist the page ledger, dropping days past {@link LEDGER_KEEP_DAYS}. */
 		function writePageLedger(ledger) {
 			const floor = localDayKey(new Date(Date.now() - LEDGER_KEEP_DAYS * 86400000));
-			for (const day of Object.keys(ledger)) {
-				if (day < floor) delete ledger[day];
+			for (const day of Object.keys(ledger.days)) {
+				if (day < floor) delete ledger.days[day];
 			}
 			try {
 				window.localStorage.setItem(LEDGER_KEY, JSON.stringify(ledger));
+				window.localStorage.removeItem(LEGACY_LEDGER_KEY);
 			} catch {
 				// A full or refused storage keeps this page's reading in memory only.
 			}
 		}
 
-		/** Sum one day's per-session buckets into one bucket set per route. */
-		function foldDay(dayEntry) {
-			const models = {};
-			if (dayEntry === undefined || dayEntry === null) return models;
-			for (const key of Object.keys(dayEntry)) {
-				const record = dayEntry[key];
-				if (record === undefined || record === null || typeof record.route !== "string") continue;
-				const target = (models[record.route] ??= { uncached: 0, cacheRead: 0, cacheWrite: 0, output: 0 });
-				const source = record.buckets ?? {};
-				target.uncached += source.uncached ?? 0;
-				target.cacheRead += source.cacheRead ?? 0;
-				target.cacheWrite += source.cacheWrite ?? 0;
-				target.output += source.output ?? 0;
+		/**
+		 * Fold one observed Session reading into the ledger as a delta against that
+		 * Session's previous reading.
+		 * @param ledger - the page ledger, mutated in place.
+		 * @param day - today's `YYYY-MM-DD` key.
+		 * @param sessionId - the Session the reading belongs to.
+		 * @param route - the `provider/model` that answered it.
+		 * @param current - the Session's whole-log buckets.
+		 * @returns the ledger to persist, or `undefined` when the reading taught nothing.
+		 */
+		function observeSession(ledger, day, sessionId, route, current) {
+			if (typeof sessionId !== "string") return undefined;
+			const previous = ledger.seen[sessionId];
+			ledger.seen[sessionId] = { route, buckets: current };
+			// A first reading carries the Session's whole past; a model switch carries an
+			// inseparable mix. Both only re-baseline.
+			if (previous === undefined || previous.route !== route) return ledger;
+			const delta = zeroBuckets();
+			let moved = 0;
+			for (const key of Object.keys(delta)) {
+				const step = (current[key] ?? 0) - (previous.buckets?.[key] ?? 0);
+				if (step > 0) {
+					delta[key] = step;
+					moved += step;
+				}
 			}
-			return models;
+			if (moved === 0) return undefined;
+			const dayBuckets = (ledger.days[day] ??= {});
+			const target = (dayBuckets[route] ??= zeroBuckets());
+			for (const key of Object.keys(delta)) target[key] += delta[key];
+			if (ledger.since === undefined) ledger.since = day;
+			return ledger;
 		}
 
 		/**
@@ -538,19 +594,24 @@ window.__ModuleLoader__.load({
 			return { rows, total: rows.reduce((sum, row) => sum + row.rub, 0) };
 		}
 
-		/** Sum the ledger over a trailing window of days, one bucket set per route. */
-		function foldRange(ledger, windowDays) {
+		/**
+		 * Sum the ledger's day buckets over a trailing window, one bucket set per route.
+		 * @param days - the ledger's per-day buckets.
+		 * @param windowDays - trailing window width, today included.
+		 */
+		function foldWindow(days, windowDays) {
 			const floor = localDayKey(new Date(Date.now() - (windowDays - 1) * 86400000));
 			const models = {};
-			for (const day of Object.keys(ledger)) {
+			for (const day of Object.keys(days)) {
 				if (day < floor) continue;
-				const folded = foldDay(ledger[day]);
+				const folded = days[day] ?? {};
 				for (const route of Object.keys(folded)) {
-					const target = (models[route] ??= { uncached: 0, cacheRead: 0, cacheWrite: 0, output: 0 });
-					target.uncached += folded[route].uncached;
-					target.cacheRead += folded[route].cacheRead;
-					target.cacheWrite += folded[route].cacheWrite;
-					target.output += folded[route].output;
+					const target = (models[route] ??= zeroBuckets());
+					const source = folded[route] ?? {};
+					target.uncached += source.uncached ?? 0;
+					target.cacheRead += source.cacheRead ?? 0;
+					target.cacheWrite += source.cacheWrite ?? 0;
+					target.output += source.output ?? 0;
 				}
 			}
 			return models;
@@ -563,38 +624,10 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * Record one Session's whole-log totals into today's ledger.
-		 * @param day - today's `YYYY-MM-DD` key.
-		 * @param sessionId - the Session the reading belongs to.
-		 * @param route - the `provider/model` that answered it.
-		 * @param buckets - its four token totals.
-		 */
-		function recordSession(day, sessionId, route, buckets) {
-			if (typeof sessionId !== "string") return;
-			const ledger = readPageLedger();
-			const today = (ledger[day] ??= {});
-			const stored = today[sessionId];
-			// `tokenUsage` is a whole-log total, so only a different reading is news.
-			if (
-				stored !== undefined &&
-				stored.route === route &&
-				(stored.buckets?.uncached ?? -1) === buckets.uncached &&
-				(stored.buckets?.cacheRead ?? -1) === buckets.cacheRead &&
-				(stored.buckets?.cacheWrite ?? -1) === buckets.cacheWrite &&
-				(stored.buckets?.output ?? -1) === buckets.output
-			) {
-				return;
-			}
-			today[sessionId] = { route, buckets };
-			writePageLedger(ledger);
-		}
-
-		/**
 		 * Statistics cell of the whole-machine total: the headline is today's spend and
 		 * the hover panel opens both today's and the week's breakdown by model. Every
-		 * Session this cell sees records its own whole-log totals into the page ledger,
-		 * and the figures are priced with the same {@link TARIFFS} table as the session
-		 * cell.
+		 * Session this cell sees contributes only its growth since the previous reading,
+		 * so a long-running Session does not dump its whole history into today.
 		 * @param props - Session-standard selectors and the locale seat.
 		 */
 		function TotalSpend({ useProjection, useChat, sessionId, t }) {
@@ -612,24 +645,26 @@ window.__ModuleLoader__.load({
 			const [ledger, setLedger] = React.useState(() => readPageLedger());
 
 			React.useEffect(() => {
-				if (uncached + cacheRead + cacheWrite + output > 0) {
-					recordSession(day, sessionId, pickRoute(selection, detected), {
-						uncached,
-						cacheRead,
-						cacheWrite,
-						output,
-					});
-				}
+				const next = observeSession(
+					readPageLedger(),
+					day,
+					sessionId,
+					pickRoute(selection, detected),
+					{ uncached, cacheRead, cacheWrite, output },
+				);
+				if (next !== undefined) writePageLedger(next);
 				setLedger(readPageLedger());
 			}, [day, sessionId, selection, detected, uncached, cacheRead, cacheWrite, output]);
 
-			const today = pricedRoutes(foldRange(ledger, 1));
-			const week = pricedRoutes(foldRange(ledger, 7));
-			if (today.total === 0 && week.total === 0) return null;
+			const today = pricedRoutes(foldWindow(ledger.days, 1));
+			const week = pricedRoutes(foldWindow(ledger.days, 7));
+			// Nothing observed yet — a fresh ledger or no Session seen. Say so rather than
+			// printing a figure this plugin cannot know.
+			const empty = today.total === 0 && week.total === 0;
 			// The first day the ledger holds explains why a week can equal a day.
-			const firstDay = Object.keys(ledger).sort()[0];
+			const firstDay = ledger.since ?? Object.keys(ledger.days).sort()[0];
 
-			const panel = open
+			const panel = open && !empty
 				? h(TotalsPanel, {
 						tr,
 						sections: [
@@ -668,7 +703,9 @@ window.__ModuleLoader__.load({
 					"span",
 					{ className: "dshCost_pill" },
 					h(RubleMark, null),
-					h("span", { className: "dshCost_label" }, tr("pill.total", { amount: formatAmount(today.total) })),
+					h("span", { className: "dshCost_label" }, empty
+						? tr("pill.noData")
+						: tr("pill.total", { amount: formatAmount(today.total) })),
 				),
 				panel !== null && createPortal !== null && position !== undefined
 					? createPortal(

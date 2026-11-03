@@ -39,7 +39,7 @@
     },
     {
       "name": "@local/composer-cost",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "dir": "composer-cost",
       "purpose": "Оценка стоимости текущего контекста в рублях: ячейка «≈ N ₽» в доке композера и тарифы моделей.",
       "host": true,
