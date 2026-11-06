@@ -35,6 +35,8 @@ const ROUTES = {
   sessionsAttach: '/dsh-migrate/sessions/attach',
   sessionsRepairWatermark: '/dsh-migrate/sessions/repair-watermark',
   sessionsStatus: '/dsh-migrate/sessions/status',
+  sessionsUnimport: '/dsh-migrate/sessions/unimport',
+  sessionsWhereis: '/dsh-migrate/sessions/whereis',
   assetsTree: '/dsh-migrate/assets/tree',
   assetsRun: '/dsh-migrate/assets/run',
   assetsPreview: '/dsh-migrate/assets/preview',
@@ -613,6 +615,40 @@ function registerSessionRoutes(server, guard, requireMethod, operations, dispose
           return;
         }
         respondJson(response, await operations.repairWatermarks({ sessionIds, entryIds, refs: Array.isArray(body.refs) ? body.refs : undefined }));
+      }),
+    }),
+  );
+
+  disposers.push(
+    server.register({
+      kind: 'exact',
+      path: ROUTES.sessionsUnimport,
+      handler: guard(async (request, response) => {
+        if (!requireMethod(request, response, 'POST')) return;
+        const body = await readJsonBody(request);
+        if (body === undefined || !Array.isArray(body.sessionIds) || body.sessionIds.length === 0) {
+          respondError(response, 400, 'BAD_ARGUMENT', 'body must be {"sessionIds": ["...", ...], "dryRun"?: true, "batch"?: "name"}');
+          return;
+        }
+        respondJson(
+          response,
+          await operations.unimport({
+            sessionIds: body.sessionIds.map(String),
+            dryRun: body.dryRun === true,
+            batch: typeof body.batch === 'string' ? body.batch : 'manual',
+          }),
+        );
+      }),
+    }),
+  );
+  disposers.push(
+    server.register({
+      kind: 'exact',
+      path: ROUTES.sessionsWhereis,
+      handler: guard(async (request, response) => {
+        if (!requireMethod(request, response, 'POST')) return;
+        const body = await readJsonBody(request);
+        respondJson(response, await operations.whereis({ sessionId: typeof body?.sessionId === 'string' ? body.sessionId : '' }));
       }),
     }),
   );

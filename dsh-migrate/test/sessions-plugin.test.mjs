@@ -76,7 +76,9 @@ test('apply registers both tools and every route under one prefix', () => {
     '/dsh-migrate/sessions/run-status',
     '/dsh-migrate/sessions/status',
     '/dsh-migrate/sessions/tree',
+    '/dsh-migrate/sessions/unimport',
     '/dsh-migrate/sessions/update',
+    '/dsh-migrate/sessions/whereis',
   ]);
   for (const route of routes) assert.equal(route.kind, 'exact');
   // Two independent layers, one prefix; no route of a predecessor plugin leaks.

@@ -11,6 +11,7 @@ import { attachSessions, listWorkspaces, workspaceHasSession } from './attach.js
 import { importForeign, requireService, sessionIdFor, updateImported } from './import.js';
 import { reimportSession } from './reimport.js';
 import { repairWatermarks } from './watermark.js';
+import { importsBetween, unimportSessions, whereIsSession } from './unimport.js';
 import { listImports, ledgerSummary } from './ledger.js';
 import { inventory, projectTree, search } from './scan.js';
 
@@ -411,6 +412,27 @@ export function createOperations(ctx) {
         appended: afterEventCount > beforeEventCount,
         reply,
       };
+    },
+
+    /**
+     * Undo imports: archive the copies, forget the ledger rows, quarantine the
+     * artifacts. dryRun: true reports what would happen without touching files.
+     */
+    async unimport({ sessionIds, dryRun, batch } = {}) {
+      if (!Array.isArray(sessionIds) || sessionIds.length === 0) throw new Error('unimport needs a non-empty sessionIds array');
+      return await unimportSessions(ctx, sessionIds, { dryRun: dryRun === true, batch: typeof batch === 'string' ? batch : 'manual' });
+    },
+
+    /** Ledger rows created inside a window — the safe selection for undoing a bulk run. */
+    importsBetween({ since, until } = {}) {
+      if (!Number.isSafeInteger(since)) throw new Error('importsBetween needs since as epoch milliseconds');
+      return { items: importsBetween(since, Number.isSafeInteger(until) ? until : Date.now()) };
+    },
+
+    /** Which workspace holds a session — the read-only answer to «где моя сессия». */
+    async whereis({ sessionId } = {}) {
+      if (typeof sessionId !== 'string' || sessionId === '') throw new Error('whereis needs a sessionId');
+      return await whereIsSession(ctx, sessionId);
     },
 
   };

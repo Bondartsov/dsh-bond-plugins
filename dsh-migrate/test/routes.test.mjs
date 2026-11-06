@@ -97,6 +97,8 @@ const ROUTES = {
   sessionsReimport: '/dsh-migrate/sessions/reimport',
   sessionsAttach: '/dsh-migrate/sessions/attach',
   sessionsRepairWatermark: '/dsh-migrate/sessions/repair-watermark',
+  sessionsUnimport: '/dsh-migrate/sessions/unimport',
+  sessionsWhereis: '/dsh-migrate/sessions/whereis',
   sessionsStatus: '/dsh-migrate/sessions/status',
   assetsTree: '/dsh-migrate/assets/tree',
   assetsRun: '/dsh-migrate/assets/run',
@@ -505,4 +507,24 @@ test('the model-facing tools answer their read-only actions', async () => {
   assert.match(status.text, /Патч профиля/u);
 
   await assert.rejects(() => assets.execute({ action: 'run', items: [] }), /needs `items`/u);
+});
+test('POST /dsh-migrate/sessions/unimport: dry run reports without touching, bad body is refused', async () => {
+  const host = createFakeHost();
+  apply(host.ctx);
+  const bad = await call(host.routes, ROUTES.sessionsUnimport, { method: 'POST', body: { sessionIds: 'nope' } });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /^BAD_ARGUMENT/u);
+
+  const dry = await call(host.routes, ROUTES.sessionsUnimport, {
+    method: 'POST',
+    body: { sessionIds: ['session-unknown'], dryRun: true, batch: 'sweep' },
+  });
+  assert.equal(dry.status, 200);
+  assert.equal(dry.body.summary.dryRun, 1);
+  assert.equal(dry.body.results[0].sessionId, 'session-unknown');
+  assert.equal(dry.body.results[0].quarantinedTo, '', 'a dry run must not invent a quarantine path');
+
+  const where = await call(host.routes, ROUTES.sessionsWhereis, { method: 'POST', body: { sessionId: 'session-unknown' } });
+  assert.equal(where.status, 200);
+  assert.equal(where.body.sessionId, 'session-unknown');
 });
