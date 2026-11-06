@@ -222,6 +222,10 @@ export function createSqliteFamilySource(spec) {
     }
 
     const messages = [];
+    // A source may advertise the same tool-call id twice (a retried request or a
+    // duplicated part row). V4 requires unique ids, so only the first
+    // advertisement counts; its result and later duplicates are skipped too.
+    const advertisedCalls = new Set();
     let provider = '';
     let model = '';
     let createdAt;
@@ -274,10 +278,17 @@ export function createSqliteFamilySource(spec) {
         /* step-start, step-finish, timeline and unknown parts carry no model-visible content */
       }
 
+      // Keep only the first advertisement of each call id; a source may repeat one
+      // (retried request or duplicated part row) and V4 requires unique ids.
+      const freshCalls = calls.filter((call) => {
+        if (advertisedCalls.has(call.callId)) return false;
+        advertisedCalls.add(call.callId);
+        return true;
+      });
       if (role === 'user') {
         const text = textParts.join('\n\n');
         if (text !== '') messages.push({ role: 'user', text, at: timeOf(data.time?.created ?? row.sequence, undefined) });
-        for (const call of calls) {
+        for (const call of freshCalls) {
           messages.push({ role: 'tool', callId: call.callId, text: typeof call.output === 'string' ? call.output : JSON.stringify(call.output ?? ''), isError: call.status === 'error', at: timeOf(data.time?.created ?? row.sequence, undefined) });
         }
         continue;
@@ -285,15 +296,16 @@ export function createSqliteFamilySource(spec) {
       if (role !== 'assistant') continue;
       const content = [];
       for (const value of reasoningParts) content.push({ type: 'reasoning', text: value });
-      for (const call of calls) {
+      for (const call of freshCalls) {
         content.push({ type: 'tool-call', id: call.callId, name: call.name, arguments: call.input });
       }
       for (const value of textParts) content.push({ type: 'text', text: value });
+      if (content.length === 0) continue;
       messages.push({ role: 'assistant', content, at: timeOf(data.time?.created ?? row.sequence, undefined) });
       // Results stay right after the message that produced them: a transcript whose
       // results are collected at the end puts the real tail of the conversation in
       // the middle and loads the last turn with unrelated tool noise.
-      for (const call of calls) {
+      for (const call of freshCalls) {
         messages.push({ role: 'tool', callId: call.callId, text: typeof call.output === 'string' ? call.output : JSON.stringify(call.output ?? ''), isError: call.status === 'error', at: timeOf(data.time?.created ?? row.sequence, undefined) });
       }
     }

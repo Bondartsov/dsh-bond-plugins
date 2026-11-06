@@ -390,3 +390,44 @@ test('sqlite family: a tool result stays next to its message, so the real tail s
   const tail = events.slice(events.indexOf(userMessages.at(-1)));
   assert.deepEqual(tail.map((event) => event.type), ['user/message', 'assistant/message', 'step/end', 'turn/end']);
 });
+test('sqlite family: a tool-call id advertised twice keeps one call and stays valid', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dbPath = join(home, 'kilo-home', 'kilo-dup.db');
+  await mkdir(join(dbPath, '..'), { recursive: true });
+  const database = new DatabaseSync(dbPath);
+  database.exec(`
+    CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, directory TEXT, title TEXT, time_created INTEGER, time_updated INTEGER, parent_id TEXT);
+    CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT, sequence INTEGER);
+    CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT, sequence INTEGER);
+  `);
+  const sessionId = 'ses_dup';
+  database
+    .prepare('INSERT INTO session (id, project_id, directory, title, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(sessionId, 'p1', 'C:\\work\\kilo', 'Duplicate call', 1_000, 9_000);
+  const insertMessage = database.prepare('INSERT INTO message (id, session_id, time_created, data, sequence) VALUES (?, ?, ?, ?, ?)');
+  const insertPart = database.prepare('INSERT INTO part (id, message_id, session_id, time_created, data, sequence) VALUES (?, ?, ?, ?, ?, ?)');
+  const call = { type: 'tool', tool: 'bash', callID: 'call_dup', state: { status: 'completed', input: { cmd: 'x' }, output: 'out' } };
+  // The same id advertised by two different assistant messages (a retried request).
+  insertMessage.run('m1', sessionId, 1_100, JSON.stringify({ role: 'user', time: { created: 1_100 } }), 1);
+  insertPart.run('p1', 'm1', sessionId, 1_100, JSON.stringify({ type: 'text', text: 'run it' }), 0);
+  insertMessage.run('m2', sessionId, 1_200, JSON.stringify({ role: 'assistant', providerID: 'zai', modelID: 'glm', time: { created: 1_200 } }), 2);
+  insertPart.run('p2', 'm2', sessionId, 1_200, JSON.stringify(call), 0);
+  insertMessage.run('m3', sessionId, 1_300, JSON.stringify({ role: 'assistant', providerID: 'zai', modelID: 'glm', time: { created: 1_300 } }), 3);
+  insertPart.run('p3', 'm3', sessionId, 1_300, JSON.stringify(call), 0);
+  database.close();
+
+  const store = createSqliteFamilySource({ id: 'kilo', label: 'KiloCode', dbPath: () => dbPath, unavailableHint: 'fixture' });
+  const transcript = await store.readSession({ source: 'kilo', id: sessionId, path: dbPath });
+  const advertised = transcript.messages
+    .filter((message) => message.role === 'assistant')
+    .flatMap((message) => message.content)
+    .filter((block) => block.type === 'tool-call')
+    .map((block) => block.id);
+  assert.deepEqual(advertised, ['call_dup'], 'the id is advertised exactly once');
+  assert.equal(transcript.messages.filter((message) => message.role === 'tool').length, 1, 'one call — one result');
+
+  const events = eventsOf({ ...transcript, title: 'Duplicate call' });
+  assert.equal(events.filter((event) => event.type === 'tool/call').length, 1);
+  assert.equal(events.filter((event) => event.type === 'tool/result').length, 1);
+  assert.doesNotThrow(() => assertEventStream(events), 'the duplicated advertisement must not break the V4 invariants');
+});
