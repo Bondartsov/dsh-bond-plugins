@@ -745,7 +745,7 @@ test('diverged is repaired the same way, not left as a dead end', async () => {
   await client.invoke((props) => props['data-action'] === 'update', 'onClick');
   const markup = await client.render(client.captured.registered.get('main').component, {}, { runEffects: false });
   assert.match(markup, /data-issue="diverged"/u);
-  assert.match(markup, /Источник переписал начало истории/u, 'the diverged message explains why the copy lags');
+  assert.match(markup, /копия собрана старой версией импортёра/u, 'the diverged message names both possible causes without blaming the source alone');
   assert.match(markup, /data-action="repair-watermark"/u, 'the proof is offered first even for a divergence');
   assert.match(markup, /Переимпортировать/u);
   assert.doesNotMatch(markup, /закройте/iu);

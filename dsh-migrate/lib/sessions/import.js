@@ -660,7 +660,7 @@ export async function updateImported(ctx, ref) {
   const canComparePrefix = known >= SIGNATURE_PREFIX && fresh.messages.length >= SIGNATURE_PREFIX && storedPrefix !== '';
   if (canComparePrefix && storedPrefix !== freshSignature.prefixHash) {
     if (copyUntouched(events, entry)) {
-      return await rebuildCopy('копия собрана заново под новым id: источник переписал начало истории');
+      return await rebuildCopy('копия собрана заново под новым id: источник переписал историю, или копия была собрана старой версией импортёра');
     }
     return {
       status: 'diverged',
@@ -671,9 +671,9 @@ export async function updateImported(ctx, ref) {
       action: 'reimport',
       reason: 'diverged',
       message:
-        'Источник переписал начало истории (компакция или правка), поэтому копия в DSH отстала и дописать её нельзя. ' +
+        'Копия не совпадает с началом источника: либо источник переписал историю, либо копия была собрана старой версией импортёра, поэтому дописать её нельзя. ' +
         'В копии есть ваши ходы, поэтому переимпорт создаст новую копию, а прежняя уйдёт в архив.',
-      warnings: ['источник переписал начало истории, а в копии есть ваши ходы; обновление не выполнено'],
+      warnings: ['источник не совпадает с копией, а в копии есть ваши ходы; обновление не выполнено'],
     };
   }
   if (fresh.messages.length <= known) {

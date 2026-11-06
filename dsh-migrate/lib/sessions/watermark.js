@@ -220,7 +220,7 @@ export async function repairLedgerWatermark(ctx, entry, options = {}) {
   const copyCovered = matched === copy.length;
   const sourceCovered = matched === source.entries.length;
   if (!copyCovered && !sourceCovered) {
-    return { ...withCounts, status: 'diverged', reason: 'начало истории источника не совпадает с копией — источник переписан' };
+    return { ...withCounts, status: 'diverged', reason: 'копия не совпадает с началом источника: источник переписал историю, или копия собрана старой версией импортёра — нужен переимпорт' };
   }
   const rawCount = sourceCovered ? sourceMessages : source.rawEnds[matched - 1] ?? 0;
   if (rawCount <= 0) return { ...withCounts, status: 'failed', reason: 'не удалось определить объём источника по совпавшему префиксу' };
