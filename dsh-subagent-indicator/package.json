@@ -1,6 +1,8 @@
 {
   "name": "@local/dsh-subagent-indicator",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "license": "MIT",
+  "engines": { "dsh": ">=0.2.1-0 <0.3.0" },
   "private": true,
   "type": "module",
   "description": "Highlights the session-header subagent counter: business accent plus a soft pulse while subagents run, muted when idle.",

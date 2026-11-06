@@ -1,6 +1,8 @@
 {
   "name": "@local/dsh-peer-bus",
-  "version": "2.1.0",
+  "version": "2.1.1",
+  "license": "MIT",
+  "engines": { "dsh": ">=0.2.1-0 <0.3.0" },
   "private": true,
   "type": "module",
   "description": "Cross-session peer messaging, coordination claims and activity board for DeepSeek Harness",
@@ -25,6 +27,8 @@
     "scripts/**/*.ps1"
   ],
   "dsh": {
+    "capabilities": ["system-prompt:write", "tools:register", "network:egress"],
+    "labels": ["prompt-modification"],
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

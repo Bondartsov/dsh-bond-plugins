@@ -1,6 +1,8 @@
 {
   "name": "@local/dsh-migrate",
   "version": "1.0.7",
+  "license": "MIT",
+  "engines": { "dsh": ">=0.2.1-0 <0.3.0" },
   "private": true,
   "type": "module",
   "description": "One migration plugin with two tabs: import sessions from Claude Code, Codex, ZCode (CLI and v2), KiloCode and OpenCode as native DSH sessions, and move their skills, MCP servers, secrets and instruction documents into DSH — idempotently, with ledgers under ~/.dsh/dsh-migrate",
@@ -27,6 +29,8 @@
     "scripts/**/*.ps1"
   ],
   "dsh": {
+    "capabilities": ["tools:register", "network:egress"],
+    "labels": [],
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

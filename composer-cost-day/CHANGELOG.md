@@ -2,6 +2,15 @@
 
 Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/); версии — semver.
 
+## 1.1.1 — 06.11.2026
+
+### Изменено
+
+- Манифест приведён к стандарту DSH: объявлены license: "MIT", диапазон
+  ngines.dsh (совместимость с хостом 0.2.1 и линией 0.2.2), закрытый набор
+  dsh.capabilities (что плагин реально трогает) и dsh.labels.
+  Проверено 
+px dsh-standards --scope entry --entry-claim static — ENTRY pass.
 ## 1.1.0 — 03.11.2026
 
 ### Изменено

@@ -1,6 +1,8 @@
 {
   "name": "@local/dsh-reload",
-  "version": "1.1.0",
+  "version": "1.1.1",
+  "license": "MIT",
+  "engines": { "dsh": ">=0.2.1-0 <0.3.0" },
   "private": true,
   "type": "module",
   "description": "Reload button for DeepSeek Harness: restarts changed plugins and reloads the page.",
@@ -19,6 +21,8 @@
     "README.md"
   ],
   "dsh": {
+    "capabilities": ["network:ingress", "network:egress"],
+    "labels": ["remote-access"],
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": {
       "platform": "web",
