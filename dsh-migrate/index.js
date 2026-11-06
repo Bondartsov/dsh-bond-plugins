@@ -483,11 +483,18 @@ function registerSessionRoutes(server, guard, requireMethod, operations, dispose
         const url = new URL(request.url ?? ROUTES.sessionsImport, 'http://localhost');
         const items = [{ source: body.source, id: body.id, path: typeof body.path === 'string' ? body.path : '' }];
         const run = createRun({ kind: 'import', items });
-        const work = runImportBatch(run, operations, items, {
-          force: body.force === true,
-          includeSubagents: body.includeSubagents === true,
-        });
-        await startRun(response, run, work, url.searchParams.get('wait') === '1');
+        // startRun expects a thunk: passing the promise here made makeWork() call a
+        // promise as a function, which destroyed the socket after the 200 was written
+        // (the client saw "Failed to fetch" while the import actually ran in background).
+        await startRun(
+          response,
+          run,
+          () => runImportBatch(run, operations, items, {
+            force: body.force === true,
+            includeSubagents: body.includeSubagents === true,
+          }),
+          url.searchParams.get('wait') === '1',
+        );
       }),
     }),
   );

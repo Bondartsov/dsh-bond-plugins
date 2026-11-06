@@ -163,6 +163,44 @@ test('POST /dsh-migrate/sessions/run validates its body and never imports on a b
   assert.equal(noSource.status, 400);
 });
 
+test('POST /dsh-migrate/sessions/import starts a run like the batch route and settles it', async () => {
+  const host = createFakeHost();
+  apply(host.ctx);
+  // Regression: this handler used to pass the WORK PROMISE where startRun expects a
+  // thunk. makeWork() then called a promise as a function right after the 200 was
+  // written; the escaping TypeError destroyed the socket, so the panel showed
+  // "Failed to fetch" while the import secretly ran in the background. The guard:
+  // the route must answer 200 with a run id and the run must settle on its own.
+  const started = await call(host.routes, ROUTES.sessionsImport, {
+    method: 'POST',
+    body: { source: 'codex', id: 'does-not-matter' },
+  });
+  assert.equal(started.status, 200, 'the import route must answer like the run route');
+  assert.equal(typeof started.body.runId, 'string');
+  assert.equal(started.body.statusRoute, ROUTES.sessionsRunStatus);
+  assert.equal(started.body.run.kind, 'import');
+
+  let snapshot;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const poll = await call(host.routes, ROUTES.sessionsRunStatus, { method: 'GET', url: `${ROUTES.sessionsRunStatus}?run=${started.body.runId}` });
+    snapshot = poll.body.run;
+    if (snapshot.status !== 'running') break;
+  }
+  assert.notEqual(snapshot.status, 'running', 'the background work must settle');
+  assert.equal(snapshot.items[0].status, 'failed', 'a stub host has no persistence, so the item fails honestly');
+
+  // The same call with wait=1 must answer with the settled run, not an error.
+  const whole = await call(host.routes, ROUTES.sessionsImport, {
+    method: 'POST',
+    url: `${ROUTES.sessionsImport}?wait=1`,
+    body: { source: 'codex', id: 'another-one' },
+  });
+  assert.equal(whole.status, 200);
+  assert.equal(whole.body.run.kind, 'import');
+  assert.notEqual(whole.body.run.status, 'running');
+});
+
 test('the run routes expose live progress: a run id, a status endpoint and a settled report', async () => {
   const host = createFakeHost();
   apply(host.ctx);
