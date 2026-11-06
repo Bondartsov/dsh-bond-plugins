@@ -10,6 +10,15 @@
 
 ---
 
+## [2.1.1] — 06.11.2026
+
+### Добавлено
+
+- package.json объявляет license: "MIT", ngines.dsh (>=0.2.1-0 <0.3.0 — хост 0.2.1
+  и линия 0.2.2), а также dsh.capabilities (system-prompt:write, 	ools:register,
+  
+etwork:egress) и dsh.labels (prompt-modification) — по манифесту видно, во что
+  плагин вмешивается.
 ## [2.1.0] — 31.10.2026
 
 ### Добавлено
