@@ -45,8 +45,11 @@ function makeWorkspace(path, title) {
 /** A registry stub backed by real workspace entities (like the durable one). */
 function makeRegistry(initial = []) {
   const workspaces = initial;
-  return {
+  const registry = {
     workspaces,
+    // The durable registry keeps archived ids in a separate list that outlives the
+    // artifact; the stub mirrors that shape so a guard can assert on it.
+    archived: [],
     async list() {
       return workspaces.map((workspace) => ({ path: workspace.path, title: workspace.title, sessionIds: [...workspace.sessionIds] }));
     },
@@ -58,9 +61,20 @@ function makeRegistry(initial = []) {
       workspaces.push(workspace);
       return workspace;
     },
+    async archiveSession(sessionId) {
+      if (!registry.archived.includes(sessionId)) registry.archived.push(sessionId);
+      for (const workspace of workspaces) {
+        workspace.sessionIds = workspace.sessionIds.filter((id) => id !== sessionId);
+      }
+      return { archivedSessionIds: [...registry.archived] };
+    },
+    async unarchiveSession(sessionId) {
+      registry.archived = registry.archived.filter((id) => id !== sessionId);
+      return { archivedSessionIds: [...registry.archived] };
+    },
   };
+  return registry;
 }
-
 /** In-memory session persistence: create/open/stat, no real files. */
 function makePersistence(cwdBySession = {}) {
   const handles = new Map();
@@ -219,4 +233,38 @@ test('attachSessions summarises a mixed batch', async () => {
   assert.equal(result.items[0].status, 'attached');
   assert.equal(result.items[1].status, 'already');
   assert.equal(result.items[2].status, 'failed');
+});
+test('GUARD: an import takes the copy out of the archive list, so it does not come back archived', async () => {
+  // The registry keeps archived ids separately and they outlive the artifact. The
+  // importer reuses a deterministic id per foreign session, so a copy that was
+  // archived once used to be re-created already archived (reported 06.11.2026 as
+  // "он импортирует их заархивированными").
+  const foreignId = 'archive-guard-1';
+  const sessionId = `session-${foreignId}`;
+  const workspace = makeWorkspace(projectResolved, 'Smart_Comply_Core');
+  const registry = makeRegistry([workspace]);
+  registry.archived.push(sessionId);
+  const ctx = makeHost({ registry, persistence: makePersistence() });
+
+  const report = await importSession(ctx, transcriptOf(foreignId, 'Архивная копия'));
+  assert.equal(report.status, 'imported');
+  assert.equal(registry.archived.includes(sessionIdFor('zcode-cli', foreignId)), false, 'the imported id must leave the archive list');
+  assert.equal(registry.archived.includes(String(report.sessionId)), false);
+});
+
+test('GUARD: the attach repair path clears the archive as well', async () => {
+  const sessionId = 'session-repair-archive-guard';
+  const registry = makeRegistry([]);
+  registry.archived.push(sessionId);
+  const ctx = {
+    get(name) {
+      if (name === 'workspaceRegistry') return registry;
+      if (name === 'sessionPersistence') return { async stat() { return { header: { id: sessionId, cwd: projectResolved } }; } };
+      return undefined;
+    },
+  };
+
+  const result = await attachSessionToWorkspace(ctx, sessionId);
+  assert.equal(result.status, 'attached');
+  assert.equal(registry.archived.includes(sessionId), false, 'a repaired session must not stay archived');
 });

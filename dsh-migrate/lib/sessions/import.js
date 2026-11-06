@@ -104,6 +104,32 @@ async function resolveImportCwd(ctx, foreignCwd) {
 }
 
 /**
+ * Remove one session from the archive list.
+ *
+ * The registry keeps `archivedSessionIds` separately from the workspace rows, and
+ * those ids survive the artifact: an imported copy that was archived once comes
+ * back archived on the next import of the same foreign session, because the id is
+ * deterministic. Idempotent — an already-visible session is a no-op.
+ *
+ * @param ctx - the Host context.
+ * @param sessionId - the DSH session id.
+ * @param warnings - the report's warning list (the caller owns it).
+ * @returns whether the archive no longer lists the session.
+ */
+export async function takeOutOfArchive(ctx, sessionId, warnings = []) {
+  const registry = typeof ctx?.get === 'function' ? ctx.get('workspaceRegistry') : undefined;
+  if (registry === undefined || registry === null) return false;
+  if (typeof registry.unarchiveSession !== 'function') return false;
+  try {
+    await registry.unarchiveSession(sessionId);
+    return true;
+  } catch (error) {
+    warnings.push(`unarchive failed: ${error?.message ?? String(error)}`);
+    return false;
+  }
+}
+
+/**
  * Attach the imported session to the DSH workspace of its project directory.
  *
  * Exported because the repair path (`attach.js`, the attach route) must use the
@@ -273,6 +299,12 @@ export async function importSession(ctx, transcript, options = {}) {
   } catch (error) {
     warnings.push(`projection seeding failed: ${error?.message ?? String(error)}`);
   }
+
+  // The archive list outlives the artifact: an id that was ever archived stays in
+  // `archivedSessionIds`, and this plugin reuses a deterministic id per foreign
+  // session — so a fresh import of a previously archived copy would be born
+  // archived. Take it out of the archive before attaching it to a workspace.
+  await takeOutOfArchive(ctx, header.id, warnings);
 
   const attachment = await attachToWorkspace(ctx, header, built.title);
   if (attachment.attached !== true) warnings.push(`workspace attach skipped: ${attachment.reason}`);

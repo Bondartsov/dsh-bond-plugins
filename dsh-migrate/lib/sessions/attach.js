@@ -142,6 +142,10 @@ export async function attachSessionToWorkspace(ctx, sessionId, options = {}) {
   }
 
   const attach = typeof options.attach === 'function' ? options.attach : attachToWorkspace;
+  // A session that sits in the archive list is invisible even after it is attached,
+  // so the repair path clears that list first — same step the importer performs.
+  const { takeOutOfArchive } = await import('./import.js');
+  await takeOutOfArchive(ctx, id, []);
   const attachment = await attach(ctx, { id, cwd }, String(options.title ?? ''));
   if (attachment?.attached === true) {
     return {
