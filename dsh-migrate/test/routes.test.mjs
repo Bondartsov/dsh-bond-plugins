@@ -520,9 +520,10 @@ test('POST /dsh-migrate/sessions/unimport: dry run reports without touching, bad
     body: { sessionIds: ['session-unknown'], dryRun: true, batch: 'sweep' },
   });
   assert.equal(dry.status, 200);
-  assert.equal(dry.body.summary.dryRun, 1);
-  assert.equal(dry.body.results[0].sessionId, 'session-unknown');
-  assert.equal(dry.body.results[0].quarantinedTo, '', 'a dry run must not invent a quarantine path');
+  // SAFETY GATE: an id that is not in the import ledger is refused, never archived.
+  assert.equal(dry.body.results[0].status, 'refused');
+  assert.match(dry.body.results[0].reason, /не числится в журнале импорта/u);
+  assert.equal(dry.body.results[0].quarantinedTo, '', 'a refused call must not invent a quarantine path');
 
   const where = await call(host.routes, ROUTES.sessionsWhereis, { method: 'POST', body: { sessionId: 'session-unknown' } });
   assert.equal(where.status, 200);

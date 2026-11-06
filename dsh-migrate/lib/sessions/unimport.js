@@ -45,6 +45,19 @@ export async function unimportSession(ctx, sessionId, options = {}) {
   const foreignId = String(entry?.foreignId ?? '');
   const base = { sessionId, status: 'failed', archived: false, ledgerForgotten: false, quarantinedTo: '' };
 
+  // SAFETY GATE. Un-import may only touch a copy this plugin imported: the ledger
+  // row is the proof of ownership. Without it the id may be the owner's own
+  // session, and archiving or moving it would destroy real work — exactly the
+  // incident of 06.11.2026, when an empty ledger let a bulk call carry 609
+  // artifacts (including live sessions) into quarantine. Refuse before any write.
+  if (entry === undefined) {
+    return {
+      ...base,
+      status: 'refused',
+      reason: 'эта сессия не числится в журнале импорта — убирать её нельзя: возможно, это ваша собственная сессия',
+    };
+  }
+
   // 1. Hide the copy from the session list: archive it in the workspace registry.
   let archived = false;
   const workspace = typeof ctx?.get === 'function' ? ctx.get('workspaceRegistry') : undefined;

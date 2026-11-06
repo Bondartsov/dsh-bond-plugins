@@ -16,6 +16,12 @@ const home = await mkdtemp(join(tmpdir(), 'dsh-migrate-unimport-'));
 process.env.DSH_HOME = join(home, '.dsh');
 
 const { unimportSession } = await import('../lib/sessions/unimport.js');
+const { recordImport } = await import('../lib/sessions/ledger.js');
+
+/** The ledger row is the proof of ownership an un-import requires. */
+async function seedLedger(sessionId, foreignId) {
+  await recordImport({ source: 'zcode-cli', foreignId, sessionId, title: 'guard', cwd: 'D:\\\\work', eventCount: 1, turnCount: 1 });
+}
 
 /** A store directory that looks exactly like one imported session. */
 async function createArtifact(sessionId) {
@@ -28,6 +34,7 @@ async function createArtifact(sessionId) {
 test('unimport quarantines the artifact for real: out of the store, recoverable in quarantine', async () => {
   const sessionId = 'session-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
   const dir = await createArtifact(sessionId);
+  await seedLedger(sessionId, 'sess_guard_move');
   const ctx = { get: () => undefined }; // no workspaceRegistry — the move must still happen
 
   const result = await unimportSession(ctx, sessionId, { batch: 'guard' });
@@ -43,6 +50,7 @@ test('unimport quarantines the artifact for real: out of the store, recoverable 
 test('a dry run reports the artifact location without moving anything', async () => {
   const sessionId = 'session-11111111-2222-4333-8444-555555555555';
   const dir = await createArtifact(sessionId);
+  await seedLedger(sessionId, 'sess_guard_dry');
   const ctx = { get: () => undefined };
 
   const result = await unimportSession(ctx, sessionId, { dryRun: true, batch: 'guard' });
@@ -53,9 +61,20 @@ test('a dry run reports the artifact location without moving anything', async ()
   assert.equal(existsSync(dir), true, 'a dry run must not move the artifact');
 });
 
-test('an unknown session id is an honest failure, not a silent success', async () => {
-  const ctx = { get: () => undefined };
-  const result = await unimportSession(ctx, 'session-99999999-9999-4999-8999-999999999999', { batch: 'guard' });
-  assert.equal(result.status, 'failed');
-  assert.match(result.reason, /нечего убирать/u);
+test('SAFETY GATE: a session that is not in the import ledger is refused and its file is never touched', async () => {
+  // The 06.11.2026 incident: un-import ran with an empty ledger and carried the
+  // owner's own sessions into quarantine. The ledger row is the proof of ownership,
+  // so without it the call must refuse before any write — archive, forget or move.
+  const sessionId = 'session-77777777-8888-4999-8aaa-bbbbbbbbbbbb';
+  const dir = await createArtifact(sessionId);
+  const archiving = [];
+  const ctx = { get: () => ({ archiveSession: async (id) => { archiving.push(id); } }) };
+
+  const result = await unimportSession(ctx, sessionId, { batch: 'guard' });
+
+  assert.equal(result.status, 'refused');
+  assert.match(result.reason, /не числится в журнале импорта/u);
+  assert.equal(archiving.length, 0, 'a refused call must not archive anything');
+  const { existsSync } = await import('node:fs');
+  assert.equal(existsSync(dir), true, 'the owner\'s session must stay exactly where it was');
 });
