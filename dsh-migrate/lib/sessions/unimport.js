@@ -63,7 +63,7 @@ export async function unimportSession(ctx, sessionId, options = {}) {
 
   // 3. Quarantine the artifact: out of the session store, still recoverable.
   let quarantinedTo = '';
-  const dir = sessionDirectory(sessionId);
+  const dir = await sessionDirectory(sessionId);
   if (dir !== undefined && dir !== '' && existsSync(dir)) {
     const target = join(quarantineDir(), String(options.batch ?? 'manual'), sessionId);
     if (dry !== true) {

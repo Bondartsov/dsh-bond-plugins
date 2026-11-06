@@ -17,7 +17,7 @@
     },
     {
       "name": "@local/dsh-migrate",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "dir": "dsh-migrate",
       "purpose": "Импорт сессий из Claude Code, Codex, ZCode, KiloCode, OpenCode и миграция ассетов (скиллы, MCP, секреты, инструкции).",
       "host": true,
