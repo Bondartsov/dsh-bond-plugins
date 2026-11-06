@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "@local/dsh-peer-bus",
-      "version": "2.1.1",
+      "version": "2.1.0",
       "dir": "peer-bus",
       "purpose": "Доска сессий и обмен сообщениями между сессиями: мастер-проекта, вопросы/ответы, захват ресурсов, ожидание.",
       "host": true,
@@ -28,7 +28,7 @@
     },
     {
       "name": "@local/dsh-reload",
-      "version": "1.1.1",
+      "version": "1.1.0",
       "dir": "dsh-reload",
       "purpose": "Кнопка ⟳ «Перезагрузить DSH»: перезагрузка плагинов и клиентских бандлов, проверка обновлений по плагинам.",
       "host": true,
@@ -39,7 +39,7 @@
     },
     {
       "name": "@local/composer-cost",
-      "version": "1.1.1",
+      "version": "1.1.0",
       "dir": "composer-cost",
       "purpose": "Оценка стоимости текущего контекста в рублях: ячейка «≈ N ₽» в доке композера и тарифы моделей.",
       "host": true,
@@ -50,7 +50,7 @@
     },
     {
       "name": "@local/composer-cost-day",
-      "version": "1.1.1",
+      "version": "1.1.0",
       "dir": "composer-cost-day",
       "purpose": "Гроссбух расхода по всем сессиям и маршрутам: маршрут `/composer-cost/today` для ячеек композера.",
       "host": true,
@@ -61,7 +61,7 @@
     },
     {
       "name": "@local/dsh-subagent-indicator",
-      "version": "1.0.1",
+      "version": "1.0.0",
       "dir": "dsh-subagent-indicator",
       "purpose": "Подсветка и пульсация чипа «N subagents» в шапке сессии, когда субагенты работают.",
       "host": true,
