@@ -15,7 +15,7 @@ import test from 'node:test';
 const home = await mkdtemp(join(tmpdir(), 'dsh-migrate-unimport-'));
 process.env.DSH_HOME = join(home, '.dsh');
 
-const { unimportSession } = await import('../lib/sessions/unimport.js');
+const { MAX_BATCH, unimportSession, unimportSessions } = await import('../lib/sessions/unimport.js');
 const { recordImport } = await import('../lib/sessions/ledger.js');
 
 /** The ledger row is the proof of ownership an un-import requires. */
@@ -77,4 +77,30 @@ test('SAFETY GATE: a session that is not in the import ledger is refused and its
   assert.equal(archiving.length, 0, 'a refused call must not archive anything');
   const { existsSync } = await import('node:fs');
   assert.equal(existsSync(dir), true, 'the owner\'s session must stay exactly where it was');
+});
+test('a bulk removal above MAX_BATCH is refused without an explicit confirm', async () => {
+  const ctx = { get: () => undefined };
+  const ids = Array.from({ length: MAX_BATCH + 1 }, (_, index) => `session-bulk-${index}`);
+  const blocked = await unimportSessions(ctx, ids, { batch: 'guard' });
+  assert.equal(blocked.refused, true, 'a bulk call must not run on its own');
+  assert.equal(blocked.summary.refused, ids.length);
+  assert.match(blocked.reason, /требует явного confirm/u);
+});
+
+test('the artifact leaves the store before the ledger row is forgotten', async () => {
+  // Order matters: forgetting first would leave a moved copy with no ownership
+  // proof, which is what let the 06.11.2026 repeat call run with an empty ledger.
+  const sessionId = 'session-33333333-4444-4555-8666-777777777777';
+  await createArtifact(sessionId);
+  await seedLedger(sessionId, 'sess_guard_order');
+  const ctx = { get: () => undefined };
+
+  const result = await unimportSession(ctx, sessionId, { batch: 'guard' });
+  assert.equal(result.status, 'removed');
+  assert.equal(result.ledgerForgotten, true);
+  assert.notEqual(result.quarantinedTo, '');
+  const { existsSync } = await import('node:fs');
+  assert.equal(existsSync(join(result.quarantinedTo, 'session.v4.jsonl.zstd')), true);
+  const { findImport } = await import('../lib/sessions/ledger.js');
+  assert.equal(findImport('zcode-cli', 'sess_guard_order'), undefined, 'the row is gone only after the move');
 });

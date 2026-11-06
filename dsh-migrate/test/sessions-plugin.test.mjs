@@ -72,6 +72,7 @@ test('apply registers both tools and every route under one prefix', () => {
     '/dsh-migrate/sessions/import',
     '/dsh-migrate/sessions/reimport',
     '/dsh-migrate/sessions/repair-watermark',
+    '/dsh-migrate/sessions/restore-quarantine',
     '/dsh-migrate/sessions/run',
     '/dsh-migrate/sessions/run-status',
     '/dsh-migrate/sessions/status',

@@ -11,7 +11,7 @@ import { attachSessions, listWorkspaces, workspaceHasSession } from './attach.js
 import { importForeign, requireService, sessionIdFor, updateImported } from './import.js';
 import { reimportSession } from './reimport.js';
 import { repairWatermarks } from './watermark.js';
-import { importsBetween, unimportSessions, whereIsSession } from './unimport.js';
+import { importsBetween, restoreQuarantine, unimportSessions, whereIsSession } from './unimport.js';
 import { listImports, ledgerSummary } from './ledger.js';
 import { inventory, projectTree, search } from './scan.js';
 
@@ -418,9 +418,14 @@ export function createOperations(ctx) {
      * Undo imports: archive the copies, forget the ledger rows, quarantine the
      * artifacts. dryRun: true reports what would happen without touching files.
      */
-    async unimport({ sessionIds, dryRun, batch } = {}) {
+    async unimport({ sessionIds, dryRun, batch, confirm } = {}) {
       if (!Array.isArray(sessionIds) || sessionIds.length === 0) throw new Error('unimport needs a non-empty sessionIds array');
-      return await unimportSessions(ctx, sessionIds, { dryRun: dryRun === true, batch: typeof batch === 'string' ? batch : 'manual' });
+      return await unimportSessions(ctx, sessionIds, { dryRun: dryRun === true, batch, confirm: confirm === true });
+    },
+
+    /** Restore quarantined copies back into the store using their manifests. */
+    async restoreQuarantine({ batch, dryRun } = {}) {
+      return await restoreQuarantine({ batch, dryRun: dryRun === true });
     },
 
     /** Ledger rows created inside a window — the safe selection for undoing a bulk run. */

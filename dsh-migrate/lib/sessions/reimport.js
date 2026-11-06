@@ -11,7 +11,7 @@
  *    rebuilt under its deterministic id. This is destructive, needs
  *    `confirm:true` from the route, and refuses while the session is open.
  */
-import { readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { importForeign, sessionIdFor } from './import.js';
@@ -104,8 +104,18 @@ export async function deleteImportedCopy(ctx, entry, options = {}) {
   }
 
   const directory = await sessionDirectory(sessionId, options);
-  if (directory !== undefined) await rm(directory, { recursive: true, force: true });
-  return { sessionId, removed: directory !== undefined, path: directory ?? '', archived };
+  // The replaced copy is moved into quarantine, never deleted: a destructive
+  // re-import must stay undoable (the 06.11.2026 incident showed how costly an
+  // irreversible removal is when the selection is wrong).
+  let movedTo = '';
+  if (directory !== undefined) {
+    const bucket = join(dshHome(), 'dsh-migrate', 'quarantine', `replace-${Date.now()}`);
+    await mkdir(bucket, { recursive: true });
+    const target = join(bucket, sessionId);
+    await rename(directory, target);
+    movedTo = target;
+  }
+  return { sessionId, removed: directory !== undefined, path: movedTo, archived };
 }
 
 /** Bring a session back into the workspace list (used by the replace path). */

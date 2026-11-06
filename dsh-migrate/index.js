@@ -636,6 +636,7 @@ function registerSessionRoutes(server, guard, requireMethod, operations, dispose
             sessionIds: body.sessionIds.map(String),
             dryRun: body.dryRun === true,
             batch: typeof body.batch === 'string' ? body.batch : 'manual',
+            confirm: body.confirm === true,
           }),
         );
       }),
@@ -654,6 +655,20 @@ function registerSessionRoutes(server, guard, requireMethod, operations, dispose
   );
 
   disposers.push(
+    server.register({
+      kind: 'exact',
+      path: '/dsh-migrate/sessions/restore-quarantine',
+      handler: guard(async (request, response) => {
+        if (!requireMethod(request, response, 'POST')) return;
+        const body = await readJsonBody(request);
+        if (body === undefined || typeof body.batch !== 'string' || body.batch === '') {
+          respondError(response, 400, 'BAD_ARGUMENT', 'body must be {"batch": "name", "dryRun"?: true}');
+          return;
+        }
+        respondJson(response, await operations.restoreQuarantine({ batch: body.batch, dryRun: body.dryRun === true }));
+      }),
+    }),
+  );  disposers.push(
     server.register({
       kind: 'exact',
       path: ROUTES.sessionsStatus,
