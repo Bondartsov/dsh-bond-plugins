@@ -355,7 +355,7 @@ window.__ModuleLoader__.load({
       'update.ok': 'Обновлено: +{messages} сообщений, +{turns} ходов',
       'update.upToDate': 'Источник не изменился — обновлять нечего',
       'update.diverged': 'Копия не совпадает с источником: история переписана или копия собрана старой версией импортёра — обновление невозможно',
-      'update.busy': 'Сессия сейчас выполняется — повторите обновление позже',
+      'update.busy': 'Обновить сейчас нельзя: {reason}. Повторите позже',
       'update.failed': 'Обновление не удалось: {reason}',
       'update.rebuilt': 'Пересобрано: создана новая копия {id}, прежняя ушла в архив',
       'update.upToDateRenamed': 'Сообщений новых нет, имя обновлено: «{title}»',
@@ -480,7 +480,7 @@ window.__ModuleLoader__.load({
       'update.ok': 'Updated: +{messages} messages, +{turns} turns',
       'update.upToDate': 'The origin did not change — nothing to update',
       'update.diverged': 'The origin rewrote its history (compaction or edit) — cannot update',
-      'update.busy': 'The session is running — retry the update later',
+      'update.busy': 'Cannot update right now: {reason}. Retry later',
       'update.failed': 'Update failed: {reason}',
       'update.rebuilt': 'Rebuilt: a new copy {id} was created and the old one was archived',
       'update.upToDateRenamed': 'No new messages; the name now follows the source: «{title}»',
@@ -1243,11 +1243,15 @@ window.__ModuleLoader__.load({
             await load(true);
             setSelection(new Set());
             // The desktop app has no page to reload: ask the client half to refresh
-            // its own session list, and fall back to the plugin-reload hint.
+            // its own session list for the exact copies this run created.
             let refreshed = false;
             if (typeof runtime.refreshSessionList === 'function') {
               try {
-                refreshed = runtime.refreshSessionList() === true;
+                const created = (Array.isArray(snapshot.items) ? snapshot.items : [])
+                  .filter((item) => item !== null && typeof item === 'object' && (item.status === 'done' || item.status === 'skipped'))
+                  .map((item) => String(item.sessionId ?? ''))
+                  .filter((id) => id !== '');
+                refreshed = runtime.refreshSessionList(created) === true;
               } catch {
                 refreshed = false;
               }
@@ -1394,7 +1398,11 @@ window.__ModuleLoader__.load({
                   title: String(report.renamedTitle ?? ''),
                 })
               : report.status === 'busy'
-                ? trRef.current('update.busy')
+                ? trRef.current('update.busy', {
+                    reason: String(
+                      (Array.isArray(report.warnings) && report.warnings.length > 0 ? report.warnings[0] : '') || report.reason || '',
+                    ),
+                  })
                 : trRef.current('update.failed', { reason: String(report.status ?? '?') });
         setNotice({ text, error: report.status !== 'updated' && report.status !== 'up-to-date' });
         return report;
@@ -3252,13 +3260,31 @@ window.__ModuleLoader__.load({
         console.warn('[dsh-migrate] layout.selectPanel is unavailable; open the panel from the left strip');
       };
       /**
-       * Ask the client half to re-read its own session list.
+       * Ask the client half to re-read its own session list after an import.
        *
-       * The desktop build has no page to reload, so after an import the plugin
-       * probes the workspace services for a refresh entry point; when none is
-       * published the panel honestly points at the plugin reload (⟳).
+       * The desktop build has no page to reload. Two mechanisms exist, and both are
+       * tried: the sessions service can re-read the projections of the exact ids the
+       * run created (`refreshProjections`), and some shells publish an explicit list
+       * refresh. Opening the first imported session is the last resort — the shell
+       * catalogues a session when it is opened, so the copy becomes visible even
+       * when neither refresh entry point is published.
        */
-      runtime.refreshSessionList = () => {
+      runtime.refreshSessionList = (sessionIds) => {
+        const ids = (Array.isArray(sessionIds) ? sessionIds : []).map(String).filter((id) => id !== '');
+        const sessions = lookup('sessions');
+        let worked = false;
+        if (sessions !== undefined && sessions !== null && typeof sessions.refreshProjections === 'function') {
+          for (const id of ids) {
+            try {
+              void Promise.resolve(sessions.refreshProjections(id)).catch((error) => {
+                console.warn('[dsh-migrate] refreshProjections failed:', error);
+              });
+              worked = true;
+            } catch (error) {
+              console.warn('[dsh-migrate] refreshProjections threw:', error);
+            }
+          }
+        }
         const candidates = [lookup('uiWorkspace'), lookup('workspace'), lookup('uiSidebar'), lookup('layout')];
         for (const service of candidates) {
           if (service === undefined || service === null) continue;
@@ -3266,14 +3292,23 @@ window.__ModuleLoader__.load({
             if (typeof service[method] === 'function') {
               try {
                 service[method]();
-                return true;
+                worked = true;
               } catch (error) {
                 console.warn('[dsh-migrate] session list refresh failed:', error);
               }
             }
           }
         }
-        return false;
+        if (worked === false && ids.length > 0) {
+          // Catalogue the copy the way the shell does it: open it once.
+          try {
+            openSession(ids[0]);
+            worked = true;
+          } catch (error) {
+            console.warn('[dsh-migrate] opening the imported session failed:', error);
+          }
+        }
+        return worked;
       };
 
       // Both layers keep their own click-time runtime object; wire them to the shell.

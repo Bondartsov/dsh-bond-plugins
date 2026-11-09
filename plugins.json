@@ -2,7 +2,7 @@
   "schema": 1,
   "owner": "Andrey Bondartsov",
   "license": "MIT",
-  "updatedAt": "06.11.2026 12:41:00",
+  "updatedAt": "06.11.2026 16:04:33",
   "plugins": [
     {
       "name": "@local/dsh-peer-bus",
@@ -17,7 +17,7 @@
     },
     {
       "name": "@local/dsh-migrate",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "dir": "dsh-migrate",
       "purpose": "Импорт сессий из Claude Code, Codex, ZCode, KiloCode, OpenCode и миграция ассетов (скиллы, MCP, секреты, инструкции).",
       "host": true,
@@ -58,6 +58,17 @@
       "readme": "composer-cost-day/README.md",
       "design": "composer-cost-day/docs/DESIGN.md",
       "changelog": "composer-cost-day/CHANGELOG.md"
+    },
+    {
+      "name": "@local/dsh-canvas",
+      "version": "1.0.0",
+      "dir": "canvas",
+      "purpose": "Документ внутри DSH: ассистент пишет текст, человек комментирует фрагменты, «Применить все» меняет только прокомментированное.",
+      "host": true,
+      "client": true,
+      "readme": "canvas/README.md",
+      "design": "canvas/docs/DESIGN.md",
+      "changelog": "canvas/CHANGELOG.md"
     },
     {
       "name": "@local/dsh-subagent-indicator",

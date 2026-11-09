@@ -806,3 +806,15 @@ test('an imported session outside a project shows «Привязать к про
   assert.doesNotMatch(cleanMarkup, /data-attach="missing"/u);
   assert.doesNotMatch(cleanMarkup, /Привязать к проекту/u);
 });
+test('GUARD: after an import the panel refreshes the exact copied ids, not just the list', async () => {
+  // Reported 09.11.2026: imported sessions appeared only after a plugin reload.
+  // The copy is catalogued by the shell, so the panel must hand the created ids to
+  // the sessions service (`refreshProjections`) and, failing that, open the first
+  // one — never stay silent.
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+  assert.match(source, /refreshProjections\(id\)/u, 'the panel must refresh the projections of each created id');
+  assert.match(source, /runtime\.refreshSessionList = \(sessionIds\)/u, 'the refresh entry point takes the created ids');
+  assert.match(source, /item\.sessionId\.\.\.|String\(item\.sessionId \?\? ''\)/u, 'the run items carry the created session ids');
+  assert.match(source, /openSession\(ids\[0\]\)/u, 'opening the first copy is the last-resort cataloguing step');
+});

@@ -565,7 +565,7 @@ export async function updateImported(ctx, ref) {
       addedMessages: 0,
       addedTurns: 0,
       verified: false,
-      warnings: ['в сессии открыт ход (она выполняется или прервана); дождитесь завершения или откройте и завершите её'],
+      warnings: ['в копии открыт ход (она выполняется или была прервана) — дождитесь завершения либо откройте копию и завершите ход'],
     };
   }
 
@@ -755,7 +755,7 @@ export async function updateImported(ctx, ref) {
       addedMessages: 0,
       addedTurns: 0,
       verified: false,
-      warnings: [`сессию нельзя открыть на запись: ${error?.message ?? String(error)}`],
+      warnings: [`копия занята на запись — обычно это значит, что она открыта в DSH: переключитесь на другую сессию и повторите (${error?.message ?? String(error)})`],
     };
   }
   try {

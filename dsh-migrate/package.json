@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-migrate",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "license": "MIT",
   "engines": { "dsh": ">=0.2.1-0 <0.3.0" },
   "private": true,

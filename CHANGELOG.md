@@ -12,6 +12,7 @@
 | `composer-cost-day` | 1.0.0 | [composer-cost-day/CHANGELOG.md](composer-cost-day/CHANGELOG.md) |
 | `dsh-subagent-indicator` | 1.0.0 | [dsh-subagent-indicator/CHANGELOG.md](dsh-subagent-indicator/CHANGELOG.md) |
 | `dsh-agent-import` | 1.0.0 | [dsh-agent-import/CHANGELOG.md](dsh-agent-import/CHANGELOG.md) |
+| `canvas` | 1.0.0 | [canvas/CHANGELOG.md](canvas/CHANGELOG.md) |
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), даты — `ДД.ММ.ГГГГ`.
 Группы: **Добавлено / Изменено / Исправлено / Устарело / Удалено / Безопасность**.
@@ -19,6 +20,17 @@
 Как читать записи: в разделе репозитория перечислены изменения, затрагивающие несколько плагинов
 или инфраструктуру (установка, обновление, CI, документация). Изменения одного плагина живут в его
 собственном журнале и попадают в его релиз (`<плагин>-v<версия>`).
+
+---
+
+## [06.11.2026] — новый плагин `canvas` 1.0.0: документ с комментариями
+
+### Добавлено
+
+- **`canvas` 1.0.0:** вкладка «Холст» в правом доке и восемь инструментов `canvas_*`. Ассистент
+  пишет текст блоками, человек комментирует фрагменты, «Применить все» меняет только
+  прокомментированное: остальные блоки сверяются по SHA-256. Word (.docx) вынесен в 1.1, своего PDF
+  нет. Подробности — [canvas/CHANGELOG.md](canvas/CHANGELOG.md).
 
 ---
 

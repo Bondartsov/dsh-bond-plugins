@@ -1,0 +1,5 @@
+# Canvas: the document the assistant writes and the person comments on.
+# Registers the Host service, eight tools, the panel routes and one prompt section.
+- insert:
+    - id: canvas
+      name: '@local/dsh-canvas'

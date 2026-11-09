@@ -25,6 +25,7 @@
 | `composer-cost` | 1.0.0 | [composer-cost/CHANGELOG.md](composer-cost/CHANGELOG.md) |
 | `composer-cost-day` | 1.0.0 | [composer-cost-day/CHANGELOG.md](composer-cost-day/CHANGELOG.md) |
 | `dsh-subagent-indicator` | 1.0.0 | [dsh-subagent-indicator/CHANGELOG.md](dsh-subagent-indicator/CHANGELOG.md) |
+| `canvas` | 1.0.0 | [canvas/CHANGELOG.md](canvas/CHANGELOG.md) |
 | весь репозиторий | — | [CHANGELOG.md](CHANGELOG.md) — общий журнал репозитория |
 
 ## Состав
@@ -37,6 +38,7 @@
 | [`composer-cost`](composer-cost/README.md) | 1.0.0 | Оценка стоимости текущего контекста в рублях: ячейка «≈ N ₽» в доке композера, тарифы моделей | ячейка под композером |
 | [`composer-cost-day`](composer-cost-day/README.md) | 1.0.0 | Расход за день по всем сессиям | без интерфейса (Host) |
 | [`dsh-subagent-indicator`](dsh-subagent-indicator/README.md) | 1.0.0 | Заметный индикатор работы субагентов: подсветка чипа «N subagents» и пульсирующее кольцо | шапка сессии |
+| [`canvas`](canvas/README.md) | 1.0.0 | Документ внутри DSH: ассистент пишет текст, человек комментирует фрагменты, «Применить все» меняет только прокомментированное | вкладка «Холст» в правом доке, инструменты `canvas_*` |
 | [`dsh-agent-import`](dsh-agent-import/README.md) | 1.0.0 | Движок импорта сессий из других агентов (используется панелью `dsh-migrate`) | маршруты `/agent-import/*`, инструмент `agent_import` |
 
 Точный машинный список с путями и версиями — [`plugins.json`](plugins.json).

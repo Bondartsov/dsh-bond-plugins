@@ -1,0 +1,45 @@
+{
+  "name": "@local/dsh-canvas",
+  "version": "1.0.0",
+  "license": "MIT",
+  "engines": { "dsh": ">=0.2.1-0 <0.3.0" },
+  "private": true,
+  "type": "module",
+  "description": "Холст: документ внутри DeepSeek Harness — ассистент пишет текст, человек комментирует фрагменты, «Применить все» меняет только прокомментированное",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/**/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "docs/DESIGN.md",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "capabilities": ["system-prompt:write", "tools:register", "network:egress"],
+    "labels": ["prompt-modification"],
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}
